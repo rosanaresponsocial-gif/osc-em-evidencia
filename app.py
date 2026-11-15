@@ -8,7 +8,7 @@ st.set_page_config(page_title="OSC em Evidência", page_icon="💜", layout="wid
 # --- CONFIGURAÇÃO SEGURA: chave vem do Secrets, nunca do código ---
 try:
     genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-2.0-flash")
+    model = genai.GenerativeModel("gemini-3.8-flash")
     tem_chave = True
 except:
     tem_chave = False
