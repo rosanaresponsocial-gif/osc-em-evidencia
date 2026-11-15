@@ -3,7 +3,7 @@ import pandas as pd
 
 st.set_page_config(page_title="SFA - Relatório de Impacto", layout="wide")
 st.title("🏠 SFA - Relatório de Impacto Social")
-st.write("Suba o Excel. Filtre, busque, veja gráficos, receba alertas, valide e baixe o relatório.")
+st.write("Suba o Excel. Busque, filtre, veja gráficos, receba alertas, valide e baixe o relatório.")
 
 # --- FUNÇÃO SEGURA - NUNCA DIVIDE POR ZERO ---
 def divisao_segura(num, den):
@@ -71,11 +71,18 @@ col_interv = achar(["total", "interven"])
 col_atendidos = achar(["atendidos", "núcleo", "nucleo"])
 col_custo = achar(["custo total", "custo"])
 
-# --- 2. FILTROS + BUSCA ---
-st.header("2️⃣ Filtros + Busca por Criança")
-c1, c2, c3, c4 = st.columns(4)
-with c1:
-    busca = st.text_input("🔍 Buscar por Cód. Criança", placeholder="Ex: Criança_12")
+# --- 2. BUSCA POR CRIANÇA - COM BOTÃO E LUPA ---
+st.header("2️⃣ 🔍 Buscar por Criança")
+st.write("Digite o código e clique em BUSCAR. Ex: Criança_12 ou só 12")
+col_busca1, col_busca2 = st.columns([3, 1])
+with col_busca1:
+    busca = st.text_input("Buscar", placeholder="Digite: Criança_12 ou 12", key="busca_crianca", label_visibility="collapsed")
+with col_busca2:
+    buscar_btn = st.button("🔍 BUSCAR", type="primary", use_container_width=True)
+
+# --- FILTROS ---
+st.subheader("Filtros")
+c2, c3, c4 = st.columns(3)
 with c2:
     op_regiao = sorted(df_total[col_regiao].dropna().astype(str).unique().tolist()) if col_regiao else []
     filtro_regiao = st.selectbox("Filtrar por Região", ["Todas"] + op_regiao)
@@ -86,9 +93,28 @@ with c4:
     op_status = sorted(df_total[col_status].dropna().astype(str).unique().tolist()) if col_status else []
     filtro_status = st.selectbox("Filtrar por Status do Prazo", ["Todos"] + op_status)
 
+if st.button("🧹 Limpar busca / Mostrar todos"):
+    st.session_state["busca_crianca"] = ""
+    st.rerun()
+
+# --- APLICA BUSCA + FILTROS ---
 df = df_total.copy()
-if busca and col_codigo:
-    df = df[df[col_codigo].astype(str).str.contains(busca, case=False, na=False)]
+
+# BUSCA - procura em TODAS as colunas, não só no código
+if busca:
+    busca_limpa = str(busca).strip().lower()
+    mask = pd.Series([False] * len(df))
+    for col in df.columns:
+        try:
+            mask = mask | df[col].astype(str).str.lower().str.contains(busca_limpa, na=False)
+        except:
+            pass
+    df = df[mask]
+    if len(df) > 0:
+        st.success(f"✅ Encontrei {len(df)} caso(s) com '{busca}'")
+    else:
+        st.warning(f"⚠️ Nenhum caso encontrado com '{busca}'. Tente só o número, ex: 12")
+
 if filtro_regiao != "Todas" and col_regiao:
     df = df[df[col_regiao].astype(str) == filtro_regiao]
 if filtro_problema != "Todos" and col_problema:
@@ -96,17 +122,15 @@ if filtro_problema != "Todos" and col_problema:
 if filtro_status != "Todos" and col_status:
     df = df[df[col_status].astype(str) == filtro_status]
 
-st.write(f"Mostrando **{len(df)}** de **{len(df_total)}** casos após filtros.")
+st.write(f"Mostrando **{len(df)}** de **{len(df_total)}** casos após busca / filtros.")
 st.dataframe(df, use_container_width=True)
 
 if len(df) == 0:
-    st.warning("⚠️ Nenhum caso com esse filtro / busca. Limpe a busca ou mude o filtro para ver os dados.")
+    st.warning("⚠️ Nenhum caso com esse filtro / busca. Clique em Limpar busca para ver todos.")
     st.stop()
 
-# --- 3. PAINEL - COM DIVISÃO SEGURA ---
+# --- 3. PAINEL ---
 st.header("3️⃣ Painel de Impacto - Da base filtrada")
-
-# Concluídos - conta Sim, ignorando maiúsculo/minúsculo e espaços
 concluidos = 0
 if col_objetivo:
     concluidos = int((df[col_objetivo].astype(str).str.lower().str.strip() == "sim").sum())
@@ -117,7 +141,6 @@ dentro = int(s.str.contains("Dentro", case=False, na=False).sum()) if col_status
 apos = int(s.str.contains("Após", case=False, na=False).sum()) if col_status else 0
 em_curso = int(s.str.contains("Em Curso|Em acolhimento", case=False, na=False).sum()) if col_status else 0
 
-# TODAS AS DIVISÕES AGORA USAM divisao_segura - NUNCA QUEBRA
 no_prazo_perc = divisao_segura((antes + dentro), concluidos) * 100
 total_interv = int(pd.to_numeric(df[col_interv], errors="coerce").fillna(0).sum()) if col_interv else 0
 total_atend = int(pd.to_numeric(df[col_atendidos], errors="coerce").fillna(0).sum()) if col_atendidos else 0
@@ -178,7 +201,7 @@ else:
     for a in alertas:
         st.warning(a)
 
-# --- 6. NOVO CASO - INTERFACE QUE PERGUNTA ---
+# --- 6. NOVO CASO ---
 st.header("6️⃣ Registrar Novo Caso - Interface que Pergunta")
 if st.button("➕ Começar novo caso"):
     st.session_state.passo = 1
@@ -259,7 +282,7 @@ if st.session_state.avaliacoes:
         st.session_state.avaliacoes = []
         st.rerun()
 
-# --- 8. RELATÓRIO PDF / TXT ---
+# --- 8. RELATÓRIO ---
 st.header("8️⃣ Relatório em PDF")
 st.write("Baixa o relatório em texto. No navegador, você imprime como PDF: Ctrl+P > Salvar como PDF.")
 
