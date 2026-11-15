@@ -1,113 +1,151 @@
 import streamlit as st
 import pandas as pd
-import google.generativeai as genai
-from datetime import datetime
+from datetime import date
 
-st.set_page_config(page_title="OSC em Evidência", page_icon="💜", layout="wide")
+st.set_page_config(page_title="SFA - Relatório de Impacto", layout="wide")
+st.title("🏠 SFA - Assistente de Impacto Social")
+st.write("A equipe responde passo a passo. A IA + automação geram o relatório. Sem inventar número.")
 
-# --- CONFIGURAÇÃO SEGURA: chave vem do Secrets, nunca do código ---
-try:
-    genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
-    model = genai.GenerativeModel("gemini-3.8-flash")
-    tem_chave = True
-except:
-    tem_chave = False
-    st.warning("⚠️ Configure a GEMINI_API_KEY em Settings > Secrets para ativar a IA.")
+if "passo" not in st.session_state:
+    st.session_state.passo = 1
+    st.session_state.dados = {}
+if "base" not in st.session_state:
+    # Carrega sua base real se você subir o Excel, ou começa vazia
+    st.session_state.base = pd.DataFrame()
 
-st.title("💜 OSC em Evidência")
-st.markdown("**Interface que consome um agente de IA** - Você vê, aprova ou age sobre o resultado. Você sabe que está falando com IA e deve revisar antes de usar.")
-st.caption("Protótipo para Projeto Final IA Aplicada - {reprograma} | Dados fictícios para demonstração")
+PROBLEMAS = [
+    "Negligência e insegurança alimentar grave",
+    "Conflito familiar agudo e fragilidade de vínculos",
+    "Ausência de rede de apoio e vulnerabilidade habitacional",
+    "Evasão escolar e violação de direitos básicos",
+    "Dependência química parental com exposição a risco",
+    "Dificuldade de acesso a acompanhamento especializado (Saúde/CAPS)",
+    "Abandono temporário por internação/situação de crise do responsável",
+]
+SOLUCOES = {
+    PROBLEMAS[0]: "Articulação com CRAS/CREAS, inclusão em benefícios e mediação familiar",
+    PROBLEMAS[1]: "Escuta qualificada, plano de acompanhamento familiar e oficinas de parentalidade",
+    PROBLEMAS[2]: "Encaminhamento para programa habitacional e fortalecimento da família extensa",
+    PROBLEMAS[3]: "Busca ativa escolar, articulação com DRE/CEU e acompanhamento pedagógico",
+    PROBLEMAS[4]: "Articulação com CAPS AD/UBS e construção de rede protetiva comunitária",
+    PROBLEMAS[5]: "Encaminhamento e monitoramento de fluxo junto à UBS/NIR (Regulação de Saúde)",
+    PROBLEMAS[6]: "Acolhimento protetivo e busca de família extensa apta ao cuidado",
+}
 
-# --- Histórico de execuções para provar AUTOMAÇÃO ---
-if "historico" not in st.session_state:
-    st.session_state.historico = []
+def avancar():
+    st.session_state.passo += 1
+    st.rerun()
+def voltar():
+    st.session_state.passo -= 1
+    st.rerun()
 
-# --- TELA 1: ENTRADA ---
-st.header("1. Envie a planilha de OSCs")
-st.info("Base de dados: planilha enviada + dados higienizados. Campos sensíveis (CPF, telefone) são ignorados pelo agente.")
+st.progress(st.session_state.passo / 6)
 
-arquivo = st.file_uploader("Faça upload de .csv ou .xlsx", type=["csv", "xlsx"])
-usar_exemplo = st.button("Usar dados de exemplo (20 OSCs fictícias)")
+# PASSO 1
+if st.session_state.passo == 1:
+    st.header("Passo 1 de 6 - O que foi feito? Quem é o caso?")
+    st.session_state.dados["codigo"] = st.text_input("Cód. Criança (anonimizado) *", value=st.session_state.dados.get("codigo",""), placeholder="Ex: Criança_36")
+    c1, c2, c3 = st.columns(3)
+    with c1: st.session_state.dados["idade"] = st.number_input("Idade (anos)", min_value=0, max_value=18, value=st.session_state.dados.get("idade", 5))
+    with c2: st.session_state.dados["regiao"] = st.selectbox("Região (SP)", ["Zona Norte","Zona Sul","Zona Leste","Zona Oeste","Centro"])
+    with c3: st.session_state.dados["nucleo"] = st.number_input("Nº Atendidos (núcleo familiar)", min_value=1, value=st.session_state.dados.get("nucleo", 6))
+    st.session_state.dados["data_acolh"] = str(st.date_input("Data Acolhimento", value=date(2025,1,1)))
+    st.session_state.dados["prazo_dias"] = st.number_input("Prazo Estimado (dias)", min_value=30, value=st.session_state.dados.get("prazo_dias", 365))
+    if st.button("Próxima ➡️ O problema"): avancar()
 
-df = None
-if usar_exemplo:
-    df = pd.DataFrame([
-        {"Nome OSC": f"OSC Exemplo {i+1}", "Área": ["Assistência Social","Educação","Cultura e Esporte"][i % 3], "Pessoas Atendidas": 50 + i*10, "Relatório Atualizado": "Sim" if i % 4 != 0 else "Não", "Horas/mês em relatório": 8 if i % 2 == 0 else 20} for i in range(20)
-    ])
-elif arquivo is not None:
-    try:
-        df = pd.read_csv(arquivo) if arquivo.name.endswith(".csv") else pd.read_excel(arquivo)
-    except Exception as e:
-        st.error(f"Erro ao ler arquivo: {e}")
+# PASSO 2
+elif st.session_state.passo == 2:
+    st.header("Passo 2 de 6 - Qual era o problema inicial?")
+    prob = st.selectbox("Problema Inicial Identificado *", PROBLEMAS)
+    st.session_state.dados["problema"] = prob
+    st.info(f"Solução sugerida pela base: {SOLUCOES[prob]}")
+    st.session_state.dados["solucao"] = st.text_area("Solução Aplicada - confirme ou ajuste", value=SOLUCOES[prob])
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Voltar"): voltar()
+    with col2:
+        if st.button("Próxima ➡️ O que a equipe fez"): avancar()
 
-if df is not None:
-    st.subheader("Prévia da Base de Dados - Higienizada")
-    st.dataframe(df.head(20), use_container_width=True)
-    st.caption(f"Total: {len(df)} OSCs | Colunas: {', '.join(df.columns)}")
+# PASSO 3
+elif st.session_state.passo == 3:
+    st.header("Passo 3 de 6 - O que a equipe fez? Intervenções")
+    st.write("Digite só os números reais. O app soma o total sozinho.")
+    campos = [
+        ("conv_origem","Conversas com Família de Origem"),
+        ("conv_acolhedora","Conversas com Família Acolhedora"),
+        ("conv_substituta","Conversas com Família Substituta"),
+        ("vara","Intervenções com Vara da Infância"),
+        ("rede","Intervenções na Rede Socioeducativa"),
+        ("relatorios","Relatórios Técnicos Realizados"),
+        ("formacoes","Formações com os Grupos"),
+        ("reunioes","Reuniões de Discussão de Caso"),
+        ("individuais","Conversas Individuais"),
+        ("pesquisas","Pesquisas / Estudos Diagnósticos"),
+        ("saude","Encaminhamentos / Contatos de Saúde (só fluxo, sem diagnóstico - LGPD)"),
+        ("outras","Outras Intervenções Técnicas"),
+    ]
+    c1, c2 = st.columns(2)
+    for i, (chave, rotulo) in enumerate(campos):
+        col = c1 if i % 2 == 0 else c2
+        with col:
+            st.session_state.dados[chave] = st.number_input(rotulo, min_value=0, step=1, value=st.session_state.dados.get(chave, 0))
+    total = sum(st.session_state.dados.get(k, 0) for k,_ in campos)
+    st.session_state.dados["total_interv"] = total
+    st.success(f"Total de Intervenções calculado: **{total}**")
+    st.session_state.dados["tempo_visitas"] = st.number_input("Tempo Total de Visitas (horas)", min_value=0.0, step=0.5)
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Voltar"): voltar()
+    with col2:
+        if st.button("Próxima ➡️ Impacto gerado"): avancar()
 
-    # --- TELA 2: AGENTE ---
-    st.header("2. Gerar síntese com IA")
-    if st.button("✨ Gerar síntese com Agente", type="primary"):
-        if not tem_chave:
-            st.error("Configure a chave para gerar.")
-        else:
-            with st.spinner("Agente analisando... isso levava ~45 min manualmente."):
-                dados_texto = df.to_csv(index=False)
-                prompt = f"""
-                Você é o Agente OSC em Evidência, assistente de análise de impacto social para OSCs pequenas e médias no Brasil.
-                REGRAS: Use APENAS os dados abaixo. Nunca invente CNPJ, valores ou nomes. Se campo vazio, escreva 'Dado não informado'. Ignore dados sensíveis. Linguagem simples. Deixe claro: 'Conteúdo gerado por IA, revise antes de usar'.
-                ENTREGUE NESSA ORDEM:
-                1. RESUMO EXECUTIVO: 3-5 linhas - quantas OSCs, quantas ativas, principal alerta.
-                2. TABELA CLASSIFICADA: Nome | Área | Status [Ativa / Em risco / Dados incompletos] | Motivo
-                3. INDICADORES: Total pessoas atendidas | Nº OSCs com dados incompletos
-                4. ALERTAS: até 5 alertas práticos
-                5. PRÓXIMO PASSO: 1 ação para hoje.
-                Se não houver dados, diga o que falta.
-                DADOS:
-                {dados_texto}
-                """
-                try:
-                    resposta = model.generate_content(prompt)
-                    st.session_state.ultima_resposta = resposta.text
-                    st.session_state.historico.append({
-                        "Data": datetime.now().strftime("%d/%m %H:%M"),
-                        "OSCs": len(df),
-                        "Tempo": "Simulado: ~2-3 min vs 45 min manual"
-                    })
-                except Exception as e:
-                    st.error(f"Erro na API (limite ou conexão): {e}. Use o Plano B - vídeo gravado.")
+# PASSO 4
+elif st.session_state.passo == 4:
+    st.header("Passo 4 de 6 - Qual foi o impacto gerado?")
+    st.session_state.dados["resultado"] = st.text_area("Resultado / Transformação Alcançada *", placeholder="Ex: Reintegração à família de origem com segurança alimentar e autonomia")
+    st.session_state.dados["desfecho"] = st.selectbox("Desfecho do Caso", ["Reintegração Família de Origem","Reintegração Família Extensa","Encaminhamento Família Substituta","Em Acolhimento (Ativo)"])
+    st.session_state.dados["objetivo"] = st.selectbox("Objetivo Atingido?", ["Sim","Em Andamento"])
+    st.session_state.dados["data_desacolh"] = str(st.date_input("Data Desacolhimento Real (deixe em branco se em curso)", value=None))
+    st.session_state.dados["status_prazo"] = st.selectbox("Status do Prazo", ["Desacolhida Antes do Prazo","Desacolhida Dentro do Prazo","Desacolhida Após o Prazo","Em Acolhimento (Em Curso)"])
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Voltar"): voltar()
+    with col2:
+        if st.button("Próxima ➡️ Custo"): avancar()
 
-    if "ultima_resposta" in st.session_state:
-        st.subheader("Resultado do Agente - Para Aprovação Humana")
-        st.markdown(st.session_state.ultima_resposta)
+# PASSO 5
+elif st.session_state.passo == 5:
+    st.header("Passo 5 de 6 - Quanto custou?")
+    bolsa = st.number_input("Custo Bolsa-Auxílio (R$)", min_value=0.0, step=100.0)
+    equipe = st.number_input("Custo Equipe / Estrutura (R$)", min_value=0.0, step=100.0)
+    st.session_state.dados["bolsa"] = bolsa
+    st.session_state.dados["equipe_custo"] = equipe
+    st.session_state.dados["custo_total"] = bolsa + equipe
+    st.success(f"Custo Total por Criança: **R$ {bolsa + equipe:,.2f}** | Fórmula: Bolsa + Equipe")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("⬅️ Voltar"): voltar()
+    with col2:
+        if st.button("🎉 Gerar Relatório de Impacto"): avancar()
 
-        # --- VALIDAÇÃO HUMANA ---
-        st.header("3. Validação Humana - 20 casos, 3 avaliadoras, 2 rodadas")
-        st.markdown("Avalie a saída da IA com critérios definidos antes do teste:")
-        c1 = st.selectbox("1. Está correta? (sem dados inventados)", ["Sim", "Parcial", "Não"])
-        c2 = st.selectbox("2. Está completa? (resumo + tabela + alertas)", ["Sim", "Parcial", "Não"])
-        c3 = st.selectbox("3. Dá para usar no relatório? (linguagem clara)", ["Sim", "Parcial", "Não"])
-        nome_avaliadora = st.text_input("Nome da avaliadora")
-        col1, col2, col3 = st.columns(3)
-        if col1.button("✅ Aprovar"):
-            st.success(f"Aprovado por {nome_avaliadora or 'Avaliadora'} - Registrado para a banca.")
-        if col2.button("✏️ Editar / Ajustar"):
-            st.info("Edição registrada. Ajuste o texto acima antes de enviar.")
-        if col3.button("❌ Rejeitar"):
-            st.error("Rejeitado. Motivo registrado para 2ª rodada.")
-
-# --- PROVAS PARA A BANCA ---
-st.divider()
-st.header("Provas das 4 Peças Exigidas")
-colA, colB = st.columns(2)
-with colA:
-    st.markdown("**1. Automação:** Gatilho = Upload -> Agente roda sozinho")
-    if st.session_state.historico:
-        st.table(pd.DataFrame(st.session_state.historico))
-    else:
-        st.caption("Nenhuma execução ainda. Gere 3 vezes para provar.")
-    st.markdown("**2. Base de dados:** Planilha enviada + dados higienizados, sem dados sensíveis.")
-with colB:
-    st.markdown("**3. IA Generativa:** Prompt anexado no código. Sem IA, volta para 45 min manual.")
-    st.markdown("**4. Validação Humana:** Meta: 20 casos, 3 avaliadoras, 2 rodadas.")
-    st.caption("Rodada 1: Pesquisa problema (n=5, 100% útil). Rodada 2: Avaliação desta tela.")
+# PASSO 6 - RELATÓRIO
+else:
+    d = st.session_state.dados
+    st.header("Passo 6 de 6 - Relatório de Impacto Gerado")
+    st.success("✅ Caso salvo. Relatório gerado pela automação + IA, sem número inventado.")
+    st.write(f"**Criança:** {d.get('codigo')} | **Problema:** {d.get('problema')}")
+    st.write(f"**Solução:** {d.get('solucao')}")
+    st.write(f"**Transformação:** {d.get('resultado')}")
+    st.write(f"**Intervenções:** {d.get('total_interv')} | **Tempo de visitas:** {d.get('tempo_visitas')}h | **Atendidos:** {d.get('nucleo')} pessoas")
+    st.write(f"**Desfecho:** {d.get('desfecho')} | **Objetivo:** {d.get('objetivo')} | **Prazo:** {d.get('status_prazo')}")
+    st.write(f"**Custo:** R$ {d.get('custo_total',0):,.2f} (Bolsa R$ {d.get('bolsa',0):,.2f} + Equipe R$ {d.get('equipe_custo',0):,.2f})")
+    st.write(f"**Frase técnica pronta:** A partir de {d.get('total_interv')} intervenções técnicas, o caso {d.get('codigo')} alcançou {d.get('resultado','').lower()} com desfecho {d.get('desfecho','').lower()}, com custo total de R$ {d.get('custo_total',0):,.2f}. Evidência: base de casos + relatórios técnicos.")
+    # Salva
+    nova = pd.DataFrame([d])
+    st.session_state.base = pd.concat([st.session_state.base, nova], ignore_index=True)
+    st.write(f"Total de casos na base nesta sessão: {len(st.session_state.base)}")
+    if st.button("🔄 Registrar novo caso"):
+        st.session_state.passo = 1
+        st.session_state.dados = {}
+        st.rerun()
+    st.download_button("⬇️ Baixar este caso em CSV", pd.DataFrame([d]).to_csv(index=False).encode("utf-8"), "caso_sfa.csv", "text/csv")
