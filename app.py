@@ -1,191 +1,238 @@
 import streamlit as st
 import pandas as pd
+import io
 
 st.set_page_config(page_title="SFA - Relatório de Impacto", layout="wide")
 st.title("🏠 SFA - Relatório de Impacto Social")
-st.write("Suba o Excel. A equipe responde. A IA + automação geram o relatório. Sem inventar número.")
+st.write("Suba o Excel. Filtre, busque, veja gráficos, receba alertas, valide e baixe o PDF.")
 
-# --- 1. SUBIR EXCEL ---
-st.header("1️⃣ Subir Excel da Base SFA")
-uploaded = st.file_uploader("Suba o arquivo Excel (.xlsx) - Base_Dados_SFA", type=["xlsx", "xls"])
-
-# Mantém a base na sessão
+# --- SESSÃO ---
 if "base" not in st.session_state:
     st.session_state.base = None
+if "avaliacoes" not in st.session_state:
+    st.session_state.avaliacoes = []
 if "passo" not in st.session_state:
     st.session_state.passo = 0
     st.session_state.dados = {}
 
+# --- 1. SUBIR EXCEL ---
+st.header("1️⃣ Subir Excel")
+uploaded = st.file_uploader("Suba o Excel - Base_Dados_SFA (.xlsx)", type=["xlsx","xls"])
 if uploaded:
     try:
-        # Lê todas as abas
         xls = pd.ExcelFile(uploaded)
-        st.write(f"Abas encontradas: {xls.sheet_names}")
-
-        # Tenta achar a aba de Base de Dados - a sua é a Aba 2
-        # Procura por nome que contenha Base / Dados / Casos
         aba_base = None
-        for nome in xls.sheet_names:
-            if any(p in nome.lower() for p in ["base", "dados", "casos", "sfa"]):
-                aba_base = nome
-                break
+        for n in xls.sheet_names:
+            if any(p in n.lower() for p in ["base","dados","casos","sfa"]):
+                aba_base = n; break
         if aba_base is None:
-            aba_base = xls.sheet_names[1] if len(xls.sheet_names) > 1 else xls.sheet_names[0]
-
-        df = pd.read_excel(uploaded, sheet_name=aba_base, header=0)
-        # Remove linhas totalmente vazias
-        df = df.dropna(how="all")
+            aba_base = xls.sheet_names[1] if len(xls.sheet_names)>1 else xls.sheet_names[0]
+        df = pd.read_excel(uploaded, sheet_name=aba_base, header=0).dropna(how="all")
         st.session_state.base = df
-        st.success(f"✅ Excel carregado! Aba usada: {aba_base} | {len(df)} linhas | {len(df.columns)} colunas")
-
-        with st.expander("Ver colunas que o app encontrou"):
-            st.write(list(df.columns))
-        with st.expander("Ver os primeiros casos"):
-            st.dataframe(df.head(10), use_container_width=True)
-
+        st.success(f"✅ Carregado! Aba: {aba_base} | {len(df)} casos | {len(df.columns)} colunas")
     except Exception as e:
-        st.error(f"❌ Erro ao ler Excel: {e}")
-        st.write("Dica: verifique se o arquivo não está aberto no Excel na hora de subir.")
+        st.error(f"Erro ao ler Excel: {e}")
 
-# --- 2. PAINEL DE IMPACTO - SÓ SE TEM BASE ---
-if st.session_state.base is not None:
-    df = st.session_state.base
-    st.header("2️⃣ Painel de Impacto - Calculado da sua base real")
+if st.session_state.base is None:
+    st.info("👆 Suba o Excel primeiro.")
+    st.stop()
 
-    # Tenta achar as colunas pelo nome, sem depender de nome exato
-    def achar_coluna(palavras):
-        for c in df.columns:
-            cl = str(c).lower()
-            if any(p in cl for p in palavras):
-                return c
-        return None
+df_total = st.session_state.base.copy()
 
-    col_objetivo = achar_coluna(["objetivo", "atingido"])
-    col_status = achar_coluna(["status", "prazo"])
-    col_total_interv = achar_coluna(["total", "interven"])
-    col_atendidos = achar_coluna(["atendidos", "núcleo", "nucleo", "pessoas"])
-    col_custo = achar_coluna(["custo total", "custo"])
+def achar(palavras):
+    for c in df_total.columns:
+        cl = str(c).lower()
+        if any(p in cl for p in palavras):
+            return c
+    return None
 
-    total_casos = len(df)
-    # Concluídos = Objetivo == Sim
-    concluidos = 0
-    if col_objetivo:
-        concluidos = (df[col_objetivo].astype(str).str.lower().str.strip() == "sim").sum()
+col_codigo = achar(["cód", "cod", "criança"])
+col_regiao = achar(["região", "regiao"])
+col_problema = achar(["problema"])
+col_desfecho = achar(["desfecho"])
+col_objetivo = achar(["objetivo"])
+col_status = achar(["status", "prazo"])
+col_interv = achar(["total", "interven"])
+col_atendidos = achar(["atendidos", "núcleo", "nucleo"])
+col_custo = achar(["custo total"])
+col_data_acolh = achar(["data acolh"])
 
-    # Prazo - conta Antes + Dentro
-    antes = dentro = apos = em_curso = 0
+# --- 3. FILTROS + 4. BUSCA ---
+st.header("2️⃣ Filtros + Busca por Criança")
+c1, c2, c3, c4 = st.columns(4)
+with c1:
+    busca = st.text_input("🔍 4. Buscar por Cód. Criança", placeholder="Ex: Criança_12")
+with c2:
+    filtro_regiao = st.selectbox("3. Filtrar por Região", ["Todas"] + sorted(df_total[col_regiao].dropna().astype(str).unique().tolist()) if col_regiao else ["Todas"])
+with c3:
+    filtro_problema = st.selectbox("3. Filtrar por Problema", ["Todos"] + sorted(df_total[col_problema].dropna().astype(str).unique().tolist()) if col_problema else ["Todos"])
+with c4:
+    filtro_status = st.selectbox("3. Filtrar por Status do Prazo", ["Todos"] + sorted(df_total[col_status].dropna().astype(str).unique().tolist()) if col_status else ["Todos"])
+
+df = df_total.copy()
+if busca and col_codigo:
+    df = df[df[col_codigo].astype(str).str.contains(busca, case=False, na=False)]
+if filtro_regiao != "Todas" and col_regiao:
+    df = df[df[col_regiao].astype(str) == filtro_regiao]
+if filtro_problema != "Todos" and col_problema:
+    df = df[df[col_problema].astype(str) == filtro_problema]
+if filtro_status != "Todos" and col_status:
+    df = df[df[col_status].astype(str) == filtro_status]
+
+st.write(f"Mostrando **{len(df)}** de **{len(df_total)}** casos após filtros.")
+st.dataframe(df, use_container_width=True)
+
+# --- PAINEL ---
+st.header("3️⃣ Painel de Impacto - Da base filtrada")
+concluidos = (df[col_objetivo].astype(str).str.lower().str.strip()=="sim").sum() if col_objetivo else 0
+s = df[col_status].astype(str) if col_status else pd.Series([])
+antes = s.str.contains("Antes", case=False, na=False).sum() if col_status else 0
+dentro = s.str.contains("Dentro", case=False, na=False).sum() if col_status else 0
+apos = s.str.contains("Após", case=False, na=False).sum() if col_status else 0
+em_curso = s.str.contains("Em Curso|Em acolhimento", case=False, na=False).sum() if col_status else 0
+no_prazo = round((antes+dentro)/concluidos*100,1) if concluidos else 0
+total_interv = int(pd.to_numeric(df[col_interv], errors="coerce").sum()) if col_interv else 0
+total_atend = int(pd.to_numeric(df[col_atendidos], errors="coerce").sum()) if col_atendidos else 0
+custo_tot = float(pd.to_numeric(df[col_custo], errors="coerce").sum()) if col_custo else 0
+
+m1,m2,m3,m4 = st.columns(4)
+with m1: st.metric("Casos Filtrados", len(df))
+with m2: st.metric("Concluídos", int(concluidos))
+with m3: st.metric("% No Prazo", f"{no_prazo}%", f"{antes} antes + {dentro} dentro")
+with m4: st.metric("Intervenções", total_interv)
+m5,m6,m7 = st.columns(3)
+with m5: st.metric("Pessoas Atendidas", total_atend)
+with m6: st.metric("Custo Total", f"R$ {custo_tot:,.2f}")
+with m7: st.metric("Custo Médio / Criança", f"R$ {custo_tot/len(df):,.2f}" if len(df) else "R$ 0")
+
+# --- 2. GRÁFICOS ---
+st.header("4️⃣ Gráficos de Impacto")
+g1,g2 = st.columns(2)
+with g1:
+    if col_problema:
+        st.subheader("Por Problema Inicial")
+        st.bar_chart(df[col_problema].value_counts())
+    if col_desfecho:
+        st.subheader("Por Desfecho")
+        st.bar_chart(df[col_desfecho].value_counts())
+with g2:
     if col_status:
-        s = df[col_status].astype(str)
-        antes = s.str.contains("Antes", case=False, na=False).sum()
-        dentro = s.str.contains("Dentro", case=False, na=False).sum()
-        apos = s.str.contains("Após|Após", case=False, na=False).sum()
-        em_curso = s.str.contains("Em Curso|Em acolhimento", case=False, na=False).sum()
-
-    no_prazo_perc = round((antes + dentro) / concluidos * 100, 1) if concluidos > 0 else 0
-    total_interv = int(pd.to_numeric(df[col_total_interv], errors="coerce").sum()) if col_total_interv else 0
-    total_atendidos = int(pd.to_numeric(df[col_atendidos], errors="coerce").sum()) if col_atendidos else 0
-    custo_total = float(pd.to_numeric(df[col_custo], errors="coerce").sum()) if col_custo else 0
-
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: st.metric("Total de Casos", total_casos)
-    with c2: st.metric("Concluídos (Objetivo Sim)", int(concluidos))
-    with c3: st.metric("% No Prazo (Antes+Dentro)", f"{no_prazo_perc}%", f"{antes} antes + {dentro} dentro")
-    with c4: st.metric("Total Intervenções", total_interv)
-    c5, c6, c7 = st.columns(3)
-    with c5: st.metric("Pessoas Atendidas", total_atendidos)
-    with c6: st.metric("Custo Total", f"R$ {custo_total:,.2f}")
-    with c7: st.metric("Custo Médio / Criança", f"R$ {custo_total/total_casos:,.2f}" if total_casos else "R$ 0")
-
-    st.subheader("Respostas às 5 perguntas do Guia do Agente - calculadas da base")
-    st.write(f"**1. Quantas intervenções até o objetivo?** Total: {total_interv} | Média por caso concluído: {total_interv/concluidos:.1f}" if concluidos else "Sem dado")
-    st.write(f"**2. Desacolhidas antes do prazo?** {antes} casos")
-    st.write(f"**3. Desacolhidas dentro do prazo?** {dentro} casos | Após: {apos} | Em curso: {em_curso}")
-    st.write(f"**4. Problemas solucionados / transformações:** {concluidos} casos com objetivo atingido, de {total_casos} totais. Ver tabela abaixo por desfecho.")
-    st.write(f"**5. Custo por criança?** Total R$ {custo_total:,.2f} | Médio R$ {custo_total/total_casos:,.2f}" if total_casos else "Sem dado")
-
-    if col_status:
-        st.write("**Distribuição por Status do Prazo:**")
+        st.subheader("Por Status do Prazo")
         st.bar_chart(df[col_status].value_counts())
+    if col_regiao:
+        st.subheader("Por Região")
+        st.bar_chart(df[col_regiao].value_counts())
 
-    st.download_button("⬇️ Baixar Relatório em CSV", df.to_csv(index=False).encode("utf-8"), "relatorio_sfa.csv", "text/csv")
-
-    # --- 3. INTERFACE QUE PERGUNTA - NOVO CASO ---
-    st.header("3️⃣ Registrar Novo Caso - Interface que vai perguntando")
-    st.write("A equipe responde passo a passo. O novo caso entra na base e o painel atualiza.")
-
-    if st.button("➕ Começar novo caso - Passo 1"):
-        st.session_state.passo = 1
-        st.session_state.dados = {}
-        st.rerun()
-
-    PROBLEMAS = [
-        "Negligência e insegurança alimentar grave",
-        "Conflito familiar agudo e fragilidade de vínculos",
-        "Ausência de rede de apoio e vulnerabilidade habitacional",
-        "Evasão escolar e violação de direitos básicos",
-        "Dependência química parental com exposição a risco",
-        "Dificuldade de acesso a acompanhamento especializado (Saúde/CAPS)",
-        "Abandono temporário por internação/situação de crise do responsável",
-    ]
-
-    if st.session_state.passo >= 1:
-        st.subheader(f"Passo {st.session_state.passo} de 6")
-        if st.session_state.passo == 1:
-            st.write("**O que foi feito? Quem é o caso?**")
-            st.session_state.dados["Cód. Criança"] = st.text_input("Cód. Criança (anonimizado) - Ex: Criança_36", value=st.session_state.dados.get("Cód. Criança",""))
-            st.session_state.dados["Idade (anos)"] = st.number_input("Idade", min_value=0, max_value=18, value=0)
-            st.session_state.dados["Nº Atendidos (Núcleo)"] = st.number_input("Nº Atendidos (núcleo)", min_value=1, value=6)
-            if st.button("Próxima ➡️ Problema"):
-                st.session_state.passo = 2; st.rerun()
-        elif st.session_state.passo == 2:
-            st.write("**Qual era o problema inicial?**")
-            st.session_state.dados["Problema Inicial Identificado"] = st.selectbox("Problema", PROBLEMAS)
-            st.session_state.dados["Solução Aplicada"] = st.text_area("Solução Aplicada")
-            if st.button("Próxima ➡️ Intervenções"):
-                st.session_state.passo = 3; st.rerun()
-        elif st.session_state.passo == 3:
-            st.write("**O que a equipe fez? Digite só os números reais.**")
-            campos = ["Conversas com Família de Origem","Conversas com Família Acolhedora","Intervenções com Vara","Intervenções na Rede","Relatórios Técnicos","Reuniões de Discussão de Caso","Conversas Individuais","Encaminhamentos de Saúde (só fluxo, sem diagnóstico)"]
-            total = 0
-            for campo in campos:
-                v = st.number_input(campo, min_value=0, step=1, value=0, key=campo)
-                st.session_state.dados[campo] = v
-                total += v
-            st.session_state.dados["Total de Intervenções Realizadas"] = total
-            st.success(f"Total de Intervenções: {total}")
-            if st.button("Próxima ➡️ Impacto"):
-                st.session_state.passo = 4; st.rerun()
-        elif st.session_state.passo == 4:
-            st.write("**Qual foi o impacto gerado?**")
-            st.session_state.dados["Resultado/Transformação Alcançada"] = st.text_area("Resultado / Transformação")
-            st.session_state.dados["Desfecho do Caso"] = st.selectbox("Desfecho", ["Reintegração Família de Origem","Reintegração Família Extensa","Encaminhamento Família Substituta","Em Acolhimento (Ativo)"])
-            st.session_state.dados["Objetivo Atingido (Sim / Em Andamento)"] = st.selectbox("Objetivo Atingido?", ["Sim","Em Andamento"])
-            st.session_state.dados["Status do Prazo"] = st.selectbox("Status do Prazo", ["Desacolhida Antes do Prazo","Desacolhida Dentro do Prazo","Desacolhida Após o Prazo","Em Acolhimento (Em Curso)"])
-            if st.button("Próxima ➡️ Custo"):
-                st.session_state.passo = 5; st.rerun()
-        elif st.session_state.passo == 5:
-            st.write("**Quanto custou?**")
-            bolsa = st.number_input("Custo Bolsa-Auxílio (R$)", min_value=0.0, step=100.0)
-            equipe = st.number_input("Custo Equipe / Estrutura (R$)", min_value=0.0, step=100.0)
-            st.session_state.dados["Custo Bolsa-Auxílio (R$)"] = bolsa
-            st.session_state.dados["Custo Equipe / Estrutura (R$)"] = equipe
-            st.session_state.dados["Custo Total por Criança (R$)"] = bolsa + equipe
-            st.success(f"Custo Total: R$ {bolsa+equipe:,.2f}")
-            if st.button("🎉 Gerar Relatório + Salvar na Base"):
-                st.session_state.passo = 6; st.rerun()
-        elif st.session_state.passo == 6:
-            d = st.session_state.dados
-            st.success("✅ Novo caso gerado! Relatório pronto, sem número inventado.")
-            st.write(f"**Caso:** {d.get('Cód. Criança')} | **Problema:** {d.get('Problema Inicial Identificado')} | **Transformação:** {d.get('Resultado/Transformação Alcançada')}")
-            st.write(f"**Intervenções:** {d.get('Total de Intervenções Realizadas')} | **Desfecho:** {d.get('Desfecho do Caso')} | **Prazo:** {d.get('Status do Prazo')} | **Custo:** R$ {d.get('Custo Total por Criança (R$)',0):,.2f}")
-            # Adiciona na base
-            nova = pd.DataFrame([d])
-            st.session_state.base = pd.concat([st.session_state.base, nova], ignore_index=True)
-            st.write(f"Base agora com {len(st.session_state.base)} casos. Recarregue o painel acima para ver o número atualizado.")
-            if st.button("🔄 Registrar outro caso"):
-                st.session_state.passo = 0
-                st.session_state.dados = {}
-                st.rerun()
+# --- 6. ALERTAS ---
+st.header("5️⃣ Alertas Automáticos")
+alertas = []
+if col_objetivo:
+    sem_objetivo = df[df[col_objetivo].astype(str).str.strip()==""]
+    if len(sem_objetivo)>0: alertas.append(f"⚠️ {len(sem_objetivo)} casos sem Objetivo Atingido preenchido.")
+if col_interv:
+    sem_interv = df[pd.to_numeric(df[col_interv], errors="coerce").fillna(0)==0]
+    if len(sem_interv)>0: alertas.append(f"⚠️ {len(sem_interv)} casos com 0 intervenções - verificar se falta alimentar.")
+if col_custo:
+    sem_custo = df[pd.to_numeric(df[col_custo], errors="coerce").fillna(0)==0]
+    if len(sem_custo)>0: alertas.append(f"⚠️ {len(sem_custo)} casos sem custo - relatório ficará sem custo médio.")
+if em_curso>0: alertas.append(f"🔔 {em_curso} casos Em Acolhimento - acompanhar prazo.")
+if apos>0: alertas.append(f"🔔 {apos} casos Desacolhidos Após o Prazo - verificar motivo do atraso.")
+if not alertas:
+    st.success("✅ Nenhum alerta. Base completa nos filtros atuais.")
 else:
-    st.info("👆 Suba o Excel primeiro para ver o painel. Depois registre o novo caso.")
+    for a in alertas: st.warning(a)
 
+# --- INTERFACE QUE PERGUNTA - NOVO CASO (resumido) ---
+st.header("6️⃣ Registrar Novo Caso - Interface que Pergunta")
+if st.button("➕ Começar novo caso"):
+    st.session_state.passo = 1; st.session_state.dados={}; st.rerun()
+if st.session_state.passo >= 1:
+    st.subheader(f"Passo {st.session_state.passo} de 5")
+    if st.session_state.passo==1:
+        st.session_state.dados["Cód. Criança"] = st.text_input("Cód. Criança (anonimizado) Ex: Criança_36")
+        st.session_state.dados["Idade (anos)"] = st.number_input("Idade", 0, 18, 5)
+        if st.button("Próxima ➡️ Problema"): st.session_state.passo=2; st.rerun()
+    elif st.session_state.passo==2:
+        st.session_state.dados["Problema Inicial Identificado"] = st.selectbox("Problema", sorted(df_total[col_problema].dropna().unique().tolist()) if col_problema else ["Negligência"])
+        st.session_state.dados["Solução Aplicada"] = st.text_area("Solução Aplicada")
+        if st.button("Próxima ➡️ Intervenções"): st.session_state.passo=3; st.rerun()
+    elif st.session_state.passo==3:
+        tot=0
+        for campo in ["Conversas Família Origem","Conversas Família Acolhedora","Intervenções Vara","Relatórios Técnicos","Encaminhamentos Saúde (só fluxo)"]:
+            v=st.number_input(campo, min_value=0, step=1, value=0, key=campo); st.session_state.dados[campo]=v; tot+=v
+        st.session_state.dados["Total de Intervenções Realizadas"]=tot
+        st.success(f"Total: {tot}")
+        if st.button("Próxima ➡️ Impacto"): st.session_state.passo=4; st.rerun()
+    elif st.session_state.passo==4:
+        st.session_state.dados["Resultado/Transformação Alcançada"]=st.text_area("Resultado / Transformação")
+        st.session_state.dados["Desfecho do Caso"]=st.selectbox("Desfecho", ["Reintegração Família de Origem","Reintegração Família Extensa","Encaminhamento Família Substituta","Em Acolhimento (Ativo)"])
+        st.session_state.dados["Objetivo Atingido (Sim / Em Andamento)"]=st.selectbox("Objetivo?", ["Sim","Em Andamento"])
+        st.session_state.dados["Status do Prazo"]=st.selectbox("Status", ["Desacolhida Antes do Prazo","Desacolhida Dentro do Prazo","Desacolhida Após o Prazo","Em Acolhimento (Em Curso)"])
+        if st.button("Próxima ➡️ Custo"): st.session_state.passo=5; st.rerun()
+    elif st.session_state.passo==5:
+        bolsa=st.number_input("Bolsa-Auxílio R$", min_value=0.0, step=100.0)
+        equipe=st.number_input("Equipe / Estrutura R$", min_value=0.0, step=100.0)
+        st.session_state.dados["Custo Total por Criança (R$)"]=bolsa+equipe
+        if st.button("🎉 Salvar na Base"):
+            nova=pd.DataFrame([st.session_state.dados])
+            st.session_state.base=pd.concat([st.session_state.base, nova], ignore_index=True)
+            st.success("✅ Salvo! Painel atualizado."); st.session_state.passo=0; st.rerun()
+
+# --- 5. VALIDAÇÃO + 1. PDF ---
+st.header("7️⃣ Validação Humana - 3 Avaliadoras (além da organizadora)")
+st.write("Cada avaliadora avalia o relatório filtrado. Passa com **2 de 3 aprovações**. Você organiza, não avalia.")
+nome = st.text_input("Nome da avaliadora")
+dec = st.radio("Decisão", ["Aprovo","Reprovo - precisa ajustar"], horizontal=True)
+coment = st.text_area("Comentário / O que ajustar?")
+if st.button("Registrar Avaliação"):
+    if nome:
+        st.session_state.avaliacoes.append({"Avaliadora": nome, "Decisão": dec, "Comentário": coment})
+        st.success(f"✅ Avaliação de {nome} registrada: {dec}")
+    else: st.error("Coloque o nome da avaliadora.")
+
+if st.session_state.avaliacoes:
+    df_av = pd.DataFrame(st.session_state.avaliacoes)
+    st.dataframe(df_av, use_container_width=True)
+    aprovos = (df_av["Decisão"]=="Aprovo").sum()
+    st.metric("Aprovações", f"{aprovos} de {len(df_av)}")
+    if len(df_av)>=3:
+        if aprovos>=2: st.success(f"✅ RELATÓRIO APROVADO - {aprovos} de 3 aprovaram (regra 2 de 3)")
+        else: st.error(f"❌ REPROVADO - só {aprovos} de 3 aprovaram. Ajustar e fazer Rodada 2.")
+    else:
+        st.info(f"Faltam {3-len(df_av)} avaliadoras para completar 3. Faltam 3 pessoas além de você.")
+    if st.button("Limpar avaliações - Começar Rodada 2"):
+        st.session_state.avaliacoes=[]; st.rerun()
+
+# --- PDF - GERA TEXTO PRONTO PARA PDF ---
+st.header("8️⃣ Relatório em PDF")
+st.write("Baixa o relatório em texto. No navegador, você imprime como PDF: Ctrl+P > Salvar como PDF.")
+texto_relatorio = f"""
+RELATÓRIO DE IMPACTO SOCIAL - SFA
+Serviço de Acolhimento em Família Acolhedora
+
+RESUMO:
+- Casos analisados (filtro atual): {len(df)}
+- Concluídos com objetivo atingido: {int(concluidos)}
+- % No Prazo (Antes + Dentro): {no_prazo}% ({antes} antes + {dentro} dentro)
+- Total de Intervenções: {total_interv}
+- Pessoas Atendidas: {total_atend}
+- Custo Total: R$ {custo_tot:,.2f} | Custo Médio por Criança: R$ {custo_tot/len(df):,.2f}
+
+PERGUNTAS DO GUIA:
+1. Intervenções até objetivo: {total_interv} total, média {total_interv/concluidos:.1f} por caso concluído
+2. Antes do prazo: {antes} | Dentro do prazo: {dentro} | Após: {apos} | Em curso: {em_curso}
+3. Transformações: {int(concluidos)} casos com objetivo atingido
+4. Custo por criança: R$ {custo_tot/len(df):,.2f} em média
+
+ALERTAS:
+{chr(10).join(alertas) if alertas else "Nenhum alerta."}
+
+VALIDAÇÃO:
+{pd.DataFrame(st.session_state.avaliacoes).to_string(index=False) if st.session_state.avaliacoes else "Ainda sem avaliações. Precisa de 3 avaliadoras além da organizadora."}
+
+Fonte: Base de dados real do Excel, sem número inventado. Dados anonimizados - LGPD.
+"""
+st.text_area("Prévia do Relatório para PDF - copie ou baixe", texto_relatorio, height=300)
+st.download_button("⬇️ 1. Baixar Relatório em TXT (para virar PDF)", texto_relatorio.encode("utf-8"), "relatorio_impacto_sfa.txt", "text/plain")
+st.download_button("⬇️ Baixar Base Filtrada em CSV", df.to_csv(index=False).encode("utf-8"), "base_filtrada_sfa.csv", "text/csv")
+st.info("Para virar PDF de verdade: Baixa o TXT > Abre no Word / Google Docs > Arquivo > Baixar como PDF. Ou no navegador: Ctrl+P > Salvar como PDF.")
