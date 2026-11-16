@@ -61,8 +61,8 @@ if not st.session_state.logado:
                 st.error("Login não encontrado.")
             elif user.iloc[0]["senha_hash"] != criptografar(senha):
                 st.error("Senha errada.")
-            elif user.iloc[0]["status"] != "aprovado":
-                st.warning("Seu cadastro está aguardando aprovação da Roseane.")
+            elif user.iloc[0]["status"] != "aprovado" and login != ADMIN_LOGIN:
+    st.warning("Seu cadastro está aguardando aprovação da Roseane.")
             else:
                 st.session_state.logado = True
                 st.session_state.login = login
