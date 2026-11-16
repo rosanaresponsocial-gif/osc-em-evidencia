@@ -30,6 +30,9 @@ def sem_acento(t):
     s = "".join(c for c in s if unicodedata.category(c) != "Mn")
     return s.lower().strip()
 
+def so_numero(v):
+    return re.sub(r"\D", "", str(v))
+
 if "avaliacoes" not in st.session_state:
     st.session_state["avaliacoes"] = []
 if "escolha_crianca" not in st.session_state:
@@ -101,7 +104,6 @@ col_resultado = achar_coluna(["resultado"])
 col_bolsa = achar_coluna(["bolsa"])
 col_equipe = achar_coluna(["equipe"])
 
-# ---------- 2 - BUSCAR - SÓ PELA LISTA, SEM DIGITAR, SEM ENTER ----------
 st.markdown("### 2️⃣ 🔍 Buscar por Criança")
 st.caption("É só clicar na lista e escolher. Não precisa digitar nem apertar Enter.")
 valores_crianca = sorted([str(x).strip() for x in df[col_crianca].dropna().unique() if str(x).strip() != "" and str(x).strip().lower() != "nan"])
@@ -123,8 +125,8 @@ st.button("🧹 Limpar busca / Mostrar todos", on_click=limpar_busca)
 
 df_f = df.copy()
 if escolha != "Todas":
-    num_escolha = re.sub(r"\D", "", str(escolha))
-    df_f = df_f[df_f[col_crianca].astype(str).apply(lambda x: re.sub(r"\D", "", x) == num_escolha)]
+    num_escolha = so_numero(escolha)
+    df_f = df_f[df_f[col_crianca].apply(lambda x: so_numero(x) == num_escolha)]
 
 if filtro_regiao != "Todas" and col_regiao:
     df_f = df_f[df_f[col_regiao].astype(str).str.strip() == filtro_regiao.strip()]
