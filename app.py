@@ -100,7 +100,9 @@ def mostrar_grafico(df, coluna, titulo, emoji):
             return
         st.bar_chart(contagem, color="#FF7A00")
         st.caption(f"Total: {int(contagem.sum())} casos | Coluna usada: {coluna}")
-        st.dataframe(contagem.reset_index().rename(columns={"index": titulo, coluna: "Quantidade"}), use_container_width=True)
+        df_tab = contagem.reset_index()
+        df_tab.columns = [titulo, "Quantidade"]
+        st.dataframe(df_tab, use_container_width=True)
     except Exception as e:
         st.error(f"Não consegui desenhar o gráfico: {e}")
         st.dataframe(df[coluna].value_counts(), use_container_width=True)
@@ -124,7 +126,6 @@ if uploaded:
                 break
         if aba is None:
             aba = xls.sheet_names[1] if len(xls.sheet_names) > 1 else xls.sheet_names[0]
-        # CORRECAO GRAFICO V2: Ignora titulo, so aceita linha com varias colunas + 2 palavras-chave
         df_teste = pd.read_excel(uploaded, sheet_name=aba, header=None)
         linha_cabecalho = 0
         palavras_chave = ["crian", "regi", "problema", "desfecho", "objetivo", "status", "prazo", "custo", "interven"]
@@ -164,7 +165,17 @@ col_regiao = achar(["região", "regiao"])
 col_problema = achar(["problema"])
 col_desfecho = achar(["desfecho"])
 col_objetivo = achar(["objetivo"])
-col_status = achar(["status", "prazo"])
+# CORRIGIDO: Pega Status do Prazo, NUNCA Prazo Estimado
+col_status = None
+for c in df_total.columns:
+    if "status" in str(c).lower():
+        col_status = c
+        break
+if col_status is None:
+    for c in df_total.columns:
+        if "prazo" in str(c).lower() and "estimado" not in str(c).lower():
+            col_status = c
+            break
 col_interv = achar(["total", "interven"])
 col_atendidos = achar(["atendidos", "núcleo", "nucleo"])
 col_custo = achar(["custo total", "custo"])
