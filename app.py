@@ -196,6 +196,9 @@ with aba3:
         df_base[c] = pd.to_numeric(df_base[c], errors="coerce").fillna(0).astype(int)
     df_com_dados = df_base[df_base["Total Registros"] > 0].copy()
     df_com_dados["Codigo"] = df_com_dados["Codigo"].astype(str).str.strip()
+    df_todas = df_base.copy()
+    df_todas["Codigo"] = df_todas["Codigo"].astype(str).str.strip()
+
     if len(df_com_dados) == 0:
         st.info("Ainda nao tem nenhum caso com dados do Word. Suba um Word na aba 2, digite o Codigo e clique em Adicionar. Depois volte aqui. 💚")
     else:
@@ -220,18 +223,15 @@ with aba3:
         st.subheader("4. 📋 Tabela resumo")
         st.dataframe(df_com_dados[["Codigo", "Total Registros", "Total Visitas", "Total Contatos", "Total Articulacoes", "Total Consultas Saude", "Total Atendimentos", "Primeiro Contato", "Ultimo Contato"]])
 
-        st.subheader("5. 📄 Baixar Relatorio em PDF")
-        st.write("Clique para baixar um PDF lindo, verde e laranja, pronto para enviar para a coordenacao! 💚🧡")
+        st.subheader("5. 📄 Baixar Relatorio em PDF - So quem tem Word")
+        st.write("PDF resumido, so com as criancas que ja tem relatorio Word. 💚🧡")
         def gerar_pdf():
             buf = io.BytesIO()
             with PdfPages(buf) as pdf:
-                # PAGINA 1 - usa ax com coordenadas fixas, sem tight_layout
                 fig = plt.figure(figsize=(8.5, 11))
                 fig.patch.set_facecolor("#FFF8E7")
                 ax = fig.add_axes([0, 0, 1, 1])
-                ax.set_xlim(0, 10)
-                ax.set_ylim(0, 11)
-                ax.axis("off")
+                ax.set_xlim(0, 10); ax.set_ylim(0, 11); ax.axis("off")
                 ax.add_patch(plt.Rectangle((0, 9.8), 10, 1.2, facecolor="#2E7D32", edgecolor="none"))
                 ax.text(5, 10.6, "OSC em Evidencia - SFA", ha="center", va="center", fontsize=20, weight="bold", color="white")
                 ax.text(5, 10.1, "Relatorio Alegre - Criancas, Adolescentes e Familias", ha="center", va="center", fontsize=11, color="white")
@@ -249,59 +249,124 @@ with aba3:
                 for cod in df_com_dados["Codigo"].tolist():
                     ax.text(1.3, y, "- " + str(cod), ha="left", va="center", fontsize=11, color="#333333")
                     y -= 0.45
-                    if y < 0.5:
-                        break
-                pdf.savefig(fig)
-                plt.close(fig)
-
-                # PAGINA 2 - CORRIGIDA: margem esquerda grande para nao cortar os nomes
+                    if y < 0.5: break
+                pdf.savefig(fig); plt.close(fig)
                 fig2, ax2 = plt.subplots(figsize=(8.5, 5))
                 fig2.patch.set_facecolor("white")
-                # Deixa 30% da esquerda livre para os nomes
                 fig2.subplots_adjust(left=0.30, right=0.92, top=0.85, bottom=0.15)
                 df_plot = df_total.sort_values("Quantidade", ascending=True)
                 cores = ["#2E7D32", "#66BB6A", "#FF8C00", "#FFB74D", "#E65100"]
                 ax2.barh(df_plot["Tipo"], df_plot["Quantidade"], color=cores[:len(df_plot)], height=0.55)
                 ax2.set_title("Total de Acoes Realizadas", color="#2E7D32", weight="bold", fontsize=14, pad=15)
-                ax2.set_xlabel("Quantidade", fontsize=11)
-                ax2.set_ylabel("")
+                ax2.set_xlabel("Quantidade", fontsize=11); ax2.set_ylabel("")
                 ax2.grid(axis="x", linestyle="--", alpha=0.4)
                 for i, v in enumerate(df_plot["Quantidade"]):
                     ax2.text(int(v) + 0.2, i, str(int(v)), va="center", ha="left", weight="bold", color="#2E7D32", fontsize=12)
                 ax2.set_xlim(0, max(int(df_plot["Quantidade"].max()) + 2, 5))
-                # Nao usar tight_layout aqui, ele que cortava os nomes
-                pdf.savefig(fig2)
-                plt.close(fig2)
-
-                # PAGINA 3 - TABELA
+                pdf.savefig(fig2); plt.close(fig2)
                 fig3, ax3 = plt.subplots(figsize=(8.5, 6))
                 ax3.axis("off")
                 ax3.set_title("Resumo por Crianca", color="#2E7D32", weight="bold", fontsize=14, pad=20)
                 dados_tabela = []
                 for _, row in df_com_dados.iterrows():
-                    dados_tabela.append([
-                        str(row["Codigo"]),
-                        str(int(row["Total Visitas"])),
-                        str(int(row["Total Contatos"])),
-                        str(int(row["Total Articulacoes"])),
-                        str(int(row["Total Consultas Saude"])),
-                        str(int(row["Total Atendimentos"])),
-                    ])
+                    dados_tabela.append([str(row["Codigo"]), str(int(row["Total Visitas"])), str(int(row["Total Contatos"])), str(int(row["Total Articulacoes"])), str(int(row["Total Consultas Saude"])), str(int(row["Total Atendimentos"]))])
                 col_labels = ["Codigo", "Visitas", "Contatos", "Articul.", "Consultas", "Atendim."]
                 tabela = ax3.table(cellText=dados_tabela, colLabels=col_labels, loc="center", cellLoc="center", colWidths=[0.35, 0.13, 0.13, 0.13, 0.13, 0.13])
-                tabela.auto_set_font_size(False)
-                tabela.set_fontsize(9)
-                tabela.scale(1, 1.8)
+                tabela.auto_set_font_size(False); tabela.set_fontsize(9); tabela.scale(1, 1.8)
                 for j in range(len(col_labels)):
-                    tabela[0, j].set_facecolor("#2E7D32")
-                    tabela[0, j].set_text_props(color="white", weight="bold")
-                pdf.savefig(fig3)
-                plt.close(fig3)
+                    tabela[0, j].set_facecolor("#2E7D32"); tabela[0, j].set_text_props(color="white", weight="bold")
+                pdf.savefig(fig3); plt.close(fig3)
             buf.seek(0)
             return buf.getvalue()
-
         pdf_bytes = gerar_pdf()
-        st.download_button("📄 Baixar Relatorio em PDF 💚🧡", data=pdf_bytes, file_name="relatorio_SFA.pdf", mime="application/pdf")
+        st.download_button("📄 Baixar PDF - So quem tem Word 💚🧡", data=pdf_bytes, file_name="relatorio_SFA.pdf", mime="application/pdf")
+
+    # --- NOVO: PDF DE TODAS AS CRIANCAS ---
+    st.divider()
+    st.subheader("6. 👨‍👩‍👧‍👦 Baixar Relatorio em PDF - TODAS as Criancas")
+    st.markdown('<div class="card-alegre">🌈 <b>Relatório completo!</b> Uma página para cada criança, com todas as informações do Excel. Ideal para arquivar e enviar para a coordenação!</div>', unsafe_allow_html=True)
+    st.write(f"Total de crianças que vão para o PDF: **{len(df_todas)}**")
+
+    def gerar_pdf_todas():
+        buf = io.BytesIO()
+        with PdfPages(buf) as pdf:
+            # CAPA
+            fig = plt.figure(figsize=(8.5, 11))
+            fig.patch.set_facecolor("#FFF8E7")
+            ax = fig.add_axes([0, 0, 1, 1])
+            ax.set_xlim(0, 10); ax.set_ylim(0, 11); ax.axis("off")
+            ax.add_patch(plt.Rectangle((0, 9.8), 10, 1.2, facecolor="#2E7D32", edgecolor="none"))
+            ax.text(5, 10.6, "OSC em Evidencia - SFA", ha="center", va="center", fontsize=20, weight="bold", color="white")
+            ax.text(5, 10.1, "Relatorio COMPLETO - Todas as Criancas", ha="center", va="center", fontsize=11, color="white")
+            ax.text(5, 9.3, "Familias diversas, infancias felizes!", ha="center", va="center", fontsize=13, color="#2E7D32", weight="bold")
+            ax.text(5, 8.9, "Cada crianca importa! Cada familia importa!", ha="center", va="center", fontsize=11, color="#E65100")
+            ax.text(1.0, 8.0, "Total de criancas na base: " + str(len(df_todas)), ha="left", va="center", fontsize=13, color="#222222")
+            ax.text(1.0, 7.5, "Com relatorio Word: " + str(len(df_com_dados)), ha="left", va="center", fontsize=13, color="#222222")
+            ax.text(1.0, 7.0, "Sem relatorio Word ainda: " + str(len(df_todas) - len(df_com_dados)), ha="left", va="center", fontsize=13, color="#222222")
+            ax.text(5, 6.0, "Neste PDF, cada crianca tem", ha="center", va="center", fontsize=12, color="#333333")
+            ax.text(5, 5.6, "uma pagina completa com todas", ha="center", va="center", fontsize=12, color="#333333")
+            ax.text(5, 5.2, "as suas informacoes!", ha="center", va="center", fontsize=12, color="#333333")
+            ax.text(5, 4.3, "Feito com amor, verde e laranja!", ha="center", va="center", fontsize=12, color="#FF8C00", style="italic", weight="bold")
+            pdf.savefig(fig); plt.close(fig)
+
+            # INDICE / LISTA DE TODAS
+            fig_idx, ax_idx = plt.subplots(figsize=(8.5, 11))
+            fig_idx.patch.set_facecolor("white")
+            ax_idx.axis("off")
+            ax_idx.set_title("Indice - Todas as Criancas", color="#2E7D32", weight="bold", fontsize=14, pad=20)
+            dados_idx = []
+            for i, (_, row) in enumerate(df_todas.iterrows(), start=1):
+                dados_idx.append([str(i), str(row["Codigo"]), str(int(row["Total Registros"])) if "Total Registros" in row else "0", str(int(row["Total Visitas"])) if "Total Visitas" in row else "0"])
+            col_labels_idx = ["N.", "Codigo", "Registros", "Visitas"]
+            tabela_idx = ax_idx.table(cellText=dados_idx, colLabels=col_labels_idx, loc="center", cellLoc="center", colWidths=[0.1, 0.5, 0.2, 0.2])
+            tabela_idx.auto_set_font_size(False); tabela_idx.set_fontsize(9); tabela_idx.scale(1, 1.4)
+            for j in range(len(col_labels_idx)):
+                tabela_idx[0, j].set_facecolor("#FF8C00"); tabela_idx[0, j].set_text_props(color="white", weight="bold")
+            pdf.savefig(fig_idx); plt.close(fig_idx)
+
+            # UMA PAGINA POR CRIANCA
+            for idx, (_, linha) in enumerate(df_todas.iterrows(), start=1):
+                fig_c = plt.figure(figsize=(8.5, 11))
+                fig_c.patch.set_facecolor("#FFF8E7")
+                ax_c = fig_c.add_axes([0, 0, 1, 1])
+                ax_c.set_xlim(0, 10); ax_c.set_ylim(0, 11); ax_c.axis("off")
+                # Faixa topo verde/laranja
+                ax_c.add_patch(plt.Rectangle((0, 10.0), 10, 1.0, facecolor="#2E7D32", edgecolor="none"))
+                ax_c.text(5, 10.6, f"Crianca {idx} de {len(df_todas)}", ha="center", va="center", fontsize=12, weight="bold", color="white")
+                ax_c.text(5, 10.2, "Codigo: " + str(linha["Codigo"]), ha="center", va="center", fontsize=14, weight="bold", color="white")
+                y = 9.5
+                # Mostra todos os campos que tem valor
+                for coluna in df_todas.columns:
+                    if coluna == "Codigo":
+                        continue
+                    valor = str(linha[coluna]).strip()
+                    if valor == "" or valor.lower() == "nan":
+                        continue
+                    # Quebra texto longo em 2 linhas se precisar
+                    titulo = str(coluna) + ": "
+                    # Se o valor for muito longo, corta para caber e continua na linha de baixo
+                    if len(valor) > 90:
+                        ax_c.text(0.6, y, titulo, ha="left", va="top", fontsize=10, weight="bold", color="#2E7D32")
+                        y -= 0.35
+                        # Quebra em pedacos de 90 caracteres
+                        for k in range(0, len(valor), 90):
+                            ax_c.text(0.6, y, valor[k:k+90], ha="left", va="top", fontsize=10, color="#222222")
+                            y -= 0.30
+                            if y < 0.5:
+                                break
+                    else:
+                        ax_c.text(0.6, y, titulo + valor, ha="left", va="top", fontsize=10, color="#222222", weight="bold" if "Total" in str(coluna) else "normal")
+                        y -= 0.35
+                    if y < 0.5:
+                        break
+                ax_c.text(5, 0.3, "OSC em Evidencia - SFA  |  Feito com amor 💚🧡", ha="center", va="center", fontsize=9, color="#FF8C00", style="italic")
+                pdf.savefig(fig_c); plt.close(fig_c)
+        buf.seek(0)
+        return buf.getvalue()
+
+    pdf_todas_bytes = gerar_pdf_todas()
+    st.download_button("👨‍👩‍👧‍👦 Baixar PDF - TODAS as Criancas 💚🧡", data=pdf_todas_bytes, file_name="relatorio_TODAS_criancas_SFA.pdf", mime="application/pdf")
+    st.caption("Esse PDF pode ficar grande se tiver muitas crianças, é normal demorar uns segundinhos para gerar.")
 
 if st.button("Sair"):
     st.session_state.logado = False
