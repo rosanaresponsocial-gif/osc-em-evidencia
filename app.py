@@ -68,26 +68,23 @@ with aba2:
     def ler_tabela_word(arquivo):
         doc = Document(arquivo)
         registros = []
-        # Procura todas as tabelas do Word
         for tabela in doc.tables:
             for i, linha in enumerate(tabela.rows):
                 celulas = [c.text.strip() for c in linha.cells]
                 if len(celulas) < 2:
                     continue
-                # Pula o cabecalho Data / Evolucao
                 if i == 0 and "data" in celulas[0].lower():
                     continue
                 if celulas[0] == "" and celulas[1] == "":
                     continue
                 registros.append({"Data": celulas[0], "Evolucao": celulas[1]})
-        # Se nao achou tabela, tenta ler os paragrafos
         if len(registros) == 0:
             for p in doc.paragraphs:
                 if p.text.strip() != "":
                     registros.append({"Data": "", "Evolucao": p.text.strip()})
         return registros
 
-        def contar(registros):
+    def contar(registros):
         visitas = 0
         contatos = 0
         articulacoes = 0
@@ -95,10 +92,7 @@ with aba2:
         atendimentos = 0
         for r in registros:
             texto = r["Evolucao"].lower()
-            # Tira a parte da Situacao semanal, que nao e consulta
-            # So conta o que vem depois de "contato", "visita", etc.
             if "visita" in texto:
-                # Conta 1 por linha, nao por palavra
                 visitas += 1
             if "contato" in texto or "whatsapp" in texto or "ligacao" in texto or "ligação" in texto:
                 contatos += 1
@@ -106,21 +100,19 @@ with aba2:
                 articulacoes += 1
             if "atendimento" in texto:
                 atendimentos += 1
-            # SAUDE - so conta se for consulta de verdade, nao o cabecalho
             if "consulta realizada" in texto or "consulta com" in texto or "consulta na" in texto or "pediatra" in texto or "contato realizado com a ubs" in texto or "atendimento na ubs" in texto:
                 consultas += 1
         return visitas, contatos, articulacoes, consultas, atendimentos
+
     if arquivo_word is not None:
         registros = ler_tabela_word(arquivo_word)
         st.success(f"Achei {len(registros)} registros no Word!")
         st.dataframe(pd.DataFrame(registros))
-
         visitas, contatos, articulacoes, consultas, atendimentos = contar(registros)
         datas = [r["Data"] for r in registros if r["Data"] != ""]
         primeiro = datas[0] if len(datas) > 0 else ""
         ultimo = datas[-1] if len(datas) > 0 else ""
         resumo = " | ".join([r["Evolucao"][:120] for r in registros[:5]])
-
         st.write("**O que o app contou sozinho:**")
         st.write(f"- Total de registros: {len(registros)}")
         st.write(f"- Total de Visitas: {visitas}")
@@ -130,7 +122,6 @@ with aba2:
         st.write(f"- Total de Atendimentos: {atendimentos}")
         st.write(f"- Primeiro contato: {primeiro}")
         st.write(f"- Ultimo contato: {ultimo}")
-
         novo_codigo = st.text_input("ID do Caso / Codigo da crianca desse relatorio", value="")
         if st.button("Adicionar e gerar Excel novo"):
             if novo_codigo.strip() == "":
@@ -140,7 +131,6 @@ with aba2:
                 for col in df_base.columns:
                     nova_linha[col] = ""
                 nova_linha["Codigo"] = novo_codigo
-                # Cria colunas novas se nao existirem
                 nova_linha["Total Registros"] = str(len(registros))
                 nova_linha["Total Visitas"] = str(visitas)
                 nova_linha["Total Contatos"] = str(contatos)
@@ -150,9 +140,7 @@ with aba2:
                 nova_linha["Primeiro Contato"] = primeiro
                 nova_linha["Ultimo Contato"] = ultimo
                 nova_linha["Resumo Evolucao"] = resumo
-
                 df_novo = pd.concat([df_base, pd.DataFrame([nova_linha])], ignore_index=True)
-                # Preenche colunas novas que faltavam na base antiga
                 df_novo = df_novo.fillna("")
                 st.success(f"Caso {novo_codigo} adicionado! Baixe o Excel novo abaixo.")
                 buffer = io.BytesIO()
