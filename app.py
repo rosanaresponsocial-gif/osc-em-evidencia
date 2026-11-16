@@ -46,7 +46,7 @@ df_base = carregar_base()
 st.title("OSC em Evidencia - SFA")
 st.write(f"Total de criancas na base: {len(df_base)}")
 
-aba1, aba2 = st.tabs(["Consultar", "Adicionar via Word"])
+aba1, aba2, aba3 = st.tabs(["Consultar", "Adicionar via Word", "Relatorio com Graficos"])
 
 with aba1:
     codigo = st.selectbox("Escolha o codigo da crianca:", [""] + sorted(df_base["Codigo"].tolist()))
@@ -122,6 +122,10 @@ with aba2:
         st.write(f"- Total de Atendimentos: {atendimentos}")
         st.write(f"- Primeiro contato: {primeiro}")
         st.write(f"- Ultimo contato: {ultimo}")
+        # Grafico do Word que acabou de subir
+        st.subheader("Grafico desse relatorio")
+        df_graf_word = pd.DataFrame({"Tipo": ["Visitas", "Contatos", "Articulacoes", "Consultas Saude", "Atendimentos"], "Quantidade": [visitas, contatos, articulacoes, consultas, atendimentos]})
+        st.bar_chart(df_graf_word.set_index("Tipo"))
         novo_codigo = st.text_input("ID do Caso / Codigo da crianca desse relatorio", value="")
         if st.button("Adicionar e gerar Excel novo"):
             if novo_codigo.strip() == "":
@@ -148,6 +152,44 @@ with aba2:
                     df_novo.to_excel(writer, index=False, startrow=3, sheet_name="2_Base_Casos_Criancas")
                 st.download_button("Baixar Excel atualizado", data=buffer.getvalue(), file_name="dados_base_novo.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 st.warning("Depois de baixar, suba esse arquivo no GitHub com o nome dados_base.xlsx para virar a base oficial.")
+
+with aba3:
+    st.subheader("Relatorio Geral - Graficos")
+    st.write("Aqui voce ve o resumo de todos os casos que ja foram alimentados via Word.")
+    # Converte as colunas de contagem para numero
+    cols = ["Total Registros", "Total Visitas", "Total Contatos", "Total Articulacoes", "Total Consultas Saude", "Total Atendimentos"]
+    for c in cols:
+        if c not in df_base.columns:
+            df_base[c] = "0"
+        df_base[c] = pd.to_numeric(df_base[c], errors="coerce").fillna(0)
+    df_com_dados = df_base[df_base["Total Registros"] > 0]
+    if len(df_com_dados) == 0:
+        st.info("Ainda nao tem nenhum caso com dados do Word. Suba um Word na aba 2 e depois volte aqui.")
+    else:
+        st.write(f"Casos com relatorio Word: {len(df_com_dados)} de {len(df_base)}")
+        col1, col2, col3 = st.columns(3)
+        col1.metric("Total Visitas", int(df_com_dados["Total Visitas"].sum()))
+        col2.metric("Total Contatos", int(df_com_dados["Total Contatos"].sum()))
+        col3.metric("Total Articulacoes", int(df_com_dados["Total Articulacoes"].sum()))
+        col1b, col2b, col3b = st.columns(3)
+        col1b.metric("Total Consultas Saude", int(df_com_dados["Total Consultas Saude"].sum()))
+        col2b.metric("Total Atendimentos", int(df_com_dados["Total Atendimentos"].sum()))
+        col3b.metric("Media de Registros por caso", round(float(df_com_dados["Total Registros"].mean()), 1))
+
+        st.subheader("1. Total de acoes realizadas")
+        df_total = pd.DataFrame({"Tipo": ["Visitas", "Contatos", "Articulacoes", "Consultas Saude", "Atendimentos"], "Quantidade": [int(df_com_dados["Total Visitas"].sum()), int(df_com_dados["Total Contatos"].sum()), int(df_com_dados["Total Articulacoes"].sum()), int(df_com_dados["Total Consultas Saude"].sum()), int(df_com_dados["Total Atendimentos"].sum())]})
+        st.bar_chart(df_total.set_index("Tipo"))
+
+        st.subheader("2. Visitas por crianca")
+        df_vis = df_com_dados[["Codigo", "Total Visitas"]].sort_values("Total Visitas", ascending=False)
+        st.bar_chart(df_vis.set_index("Codigo"))
+
+        st.subheader("3. Contatos por crianca")
+        df_cont = df_com_dados[["Codigo", "Total Contatos"]].sort_values("Total Contatos", ascending=False)
+        st.bar_chart(df_cont.set_index("Codigo"))
+
+        st.subheader("4. Tabela resumo para copiar")
+        st.dataframe(df_com_dados[["Codigo", "Total Registros", "Total Visitas", "Total Contatos", "Total Articulacoes", "Total Consultas Saude", "Total Atendimentos", "Primeiro Contato", "Ultimo Contato"]])
 
 if st.button("Sair"):
     st.session_state.logado = False
