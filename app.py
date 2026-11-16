@@ -6,7 +6,6 @@ from io import BytesIO
 
 st.set_page_config(page_title="SFA - Família Acolhedora", layout="wide")
 
-# ---------- CORES: LARANJA / BRANCO / VERDE ----------
 st.markdown("""
 <style>
 .stApp { background-color: #FFFFFF; }
@@ -71,6 +70,10 @@ if arquivo is not None:
         df = pd.read_excel(arquivo, sheet_name=nome_aba, header=linha_cab)
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how="all")
+        # LIMPA ESPAÇOS DE TODAS AS CÉLULAS DE TEXTO - CORRIGE A BUSCA
+        for c in df.columns:
+            if df[c].dtype == object:
+                df[c] = df[c].astype(str).str.strip().replace("nan", "")
         st.success(f"✅ Base carregada: {len(df)} casos")
     except Exception as e:
         st.error(f"Erro ao ler Excel: {e}")
@@ -104,27 +107,34 @@ col_equipe = achar_coluna(["equipe"])
 
 # ---------- 2 - BUSCAR ----------
 st.markdown("### 2️⃣ 🔍 Buscar por Criança")
-st.caption("Use a LISTA abaixo - funciona no celular sem precisar apertar Enter.")
 busca = st.text_input("Buscar digitando", placeholder="Digite: 13 e aperte Enter / Concluir", key="busca_crianca")
-lista_criancas = ["Todas"] + sorted([str(x) for x in df[col_crianca].dropna().unique()])
+
+# Lista limpa, sem espaços, sem vazios
+valores_crianca = sorted([str(x).strip() for x in df[col_crianca].dropna().unique() if str(x).strip() != "" and str(x).strip().lower() != "nan"])
+lista_criancas = ["Todas"] + valores_crianca
 escolha = st.selectbox("Ou escolha a criança na lista:", lista_criancas, key="escolha_crianca")
 
 c1, c2, c3 = st.columns(3)
 with c1:
-    regioes = ["Todas"] + sorted([str(x) for x in df[col_regiao].dropna().unique()]) if col_regiao else ["Todas"]
+    regioes = ["Todas"] + sorted([str(x).strip() for x in df[col_regiao].dropna().unique()]) if col_regiao else ["Todas"]
     filtro_regiao = st.selectbox("Filtrar por Região", regioes, key="filtro_regiao")
 with c2:
-    problemas = ["Todos"] + sorted([str(x) for x in df[col_problema].dropna().unique()]) if col_problema else ["Todos"]
+    problemas = ["Todos"] + sorted([str(x).strip() for x in df[col_problema].dropna().unique()]) if col_problema else ["Todos"]
     filtro_problema = st.selectbox("Filtrar por Problema", problemas, key="filtro_problema")
 with c3:
-    prazos = ["Todos"] + sorted([str(x) for x in df[col_prazo].dropna().unique()]) if col_prazo else ["Todos"]
+    prazos = ["Todos"] + sorted([str(x).strip() for x in df[col_prazo].dropna().unique()]) if col_prazo else ["Todos"]
     filtro_prazo = st.selectbox("Filtrar por Status do Prazo", prazos, key="filtro_prazo")
 
 st.button("🧹 Limpar busca / Mostrar todos", on_click=limpar_busca)
 
+# DEBUG - VAI MOSTRAR O QUE VOCÊ ESCOLHEU
+st.write(f"👉 Você escolheu na lista: **{escolha}** | Digitado: **{busca}** | Coluna usada: **{col_crianca}**")
+
 df_f = df.copy()
+# FILTRO POR NÚMERO - compara só os números, ignora acento e espaço
 if escolha != "Todas":
-    df_f = df_f[df_f[col_crianca].astype(str) == escolha]
+    num_escolha = re.sub(r"\D", "", str(escolha))
+    df_f = df_f[df_f[col_crianca].astype(str).apply(lambda x: re.sub(r"\D", "", x) == num_escolha)]
 elif busca and busca.strip() != "":
     b = sem_acento(busca)
     b_num = re.sub(r"\D", "", b)
@@ -138,11 +148,11 @@ elif busca and busca.strip() != "":
     df_f = df_f[df_f[col_crianca].apply(match)]
 
 if filtro_regiao != "Todas" and col_regiao:
-    df_f = df_f[df_f[col_regiao].astype(str) == filtro_regiao]
+    df_f = df_f[df_f[col_regiao].astype(str).str.strip() == filtro_regiao.strip()]
 if filtro_problema != "Todos" and col_problema:
-    df_f = df_f[df_f[col_problema].astype(str) == filtro_problema]
+    df_f = df_f[df_f[col_problema].astype(str).str.strip() == filtro_problema.strip()]
 if filtro_prazo != "Todos" and col_prazo:
-    df_f = df_f[df_f[col_prazo].astype(str) == filtro_prazo]
+    df_f = df_f[df_f[col_prazo].astype(str).str.strip() == filtro_prazo.strip()]
 
 st.write(f"Mostrando **{len(df_f)}** de **{len(df)}** casos")
 st.dataframe(df_f, use_container_width=True)
