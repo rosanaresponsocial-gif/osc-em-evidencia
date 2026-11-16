@@ -10,7 +10,7 @@ st.set_page_config(page_title="SFA - Restrito", layout="wide")
 ARQUIVO_BASE = "dados_base.xlsx"
 ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_COMPLEMENTAR = "dados_complementares.csv"
-ADMIN_LOGIN = "roseane"  # <-- TROQUE AQUI pelo seu login de admin
+ADMIN_LOGIN = "sfaevidencia"
 
 # --- FUNÇÕES SEGURANÇA ---
 def criptografar(senha):
