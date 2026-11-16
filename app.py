@@ -1,8 +1,8 @@
 import streamlit as st
 import pandas as pd
 import re
+import unicodedata
 from datetime import date
-import io
 
 st.set_page_config(page_title="SFA - Relatório de Impacto", layout="wide")
 
@@ -35,19 +35,36 @@ def formata_moeda(v):
     except:
         return "R$ 0,00"
 
-# --- Dicionário qualitativo -> nota ---
-# O app procura essas palavras no Word
-def nota_por_palavras(texto, mapa):
-    t = texto.lower()
-    for palavra, nota in mapa.items():
-        if palavra in t:
-            return palavra, nota
-    return "Não identificado", None
+def normalizar(texto):
+    if not texto:
+        return ""
+    t = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII')
+    return t.lower()
 
-MAPA_VINCULO = {"forte": 3, "em reconstrução": 2, "em reconstrucao": 2, "frágil": 1, "fragil": 1, "rompendo": 0, "rompido": 0, "ausente": 0}
-MAPA_EMOCIONAL = {"tranquila": 3, "tranquilo": 3, "calma": 3, "estável": 2, "estavel": 2, "instável": 1, "instavel": 1, "em crise": 0, "crise": 0, "agitada": 1}
-MAPA_ESCOLA = {"todos os dias": 3, "todos os dias na escola": 3, "3-4 dias": 2, "3 dias": 2, "1-2 dias": 1, "não foi": 0, "nao foi": 0, "faltou": 0}
-MAPA_EVOLUCAO = {"melhorou muito": 3, "melhorou bastante": 3, "melhorou um pouco": 2, "melhorou": 2, "estagnou": 1, "estável": 1, "regrediu": 0, "piorou": 0}
+def ler_docx_sem_biblioteca(arquivo):
+    try:
+        import zipfile
+        arquivo.seek(0)
+        with zipfile.ZipFile(arquivo) as z:
+            xml_content = z.read('word/document.xml')
+            textos = re.findall(r'<w:t[^>]*>(.*?)</w:t>', xml_content.decode())
+            texto2 = " ".join(textos)
+            if texto2.strip():
+                return texto2, "Lido ✅"
+    except Exception as e:
+        return "", f"Não consegui ler: {e}"
+    return "", "Vazio"
+
+MAPA_VINCULO = {"forte": 3, "bom": 3, "otimo": 3, "excelente": 3, "muito bom": 3, "reconstrucao": 2, "reconstruindo": 2, "melhorando": 2, "razoavel": 2, "regular": 2, "fragil": 1, "fraco": 1, "delicado": 1, "dificil": 1, "distante": 1, "rompendo": 0, "rompido": 0, "ausente": 0, "nenhum": 0, "sem vinculo": 0}
+MAPA_EMOCIONAL = {"tranquila": 3, "tranquilo": 3, "calma": 3, "bem": 3, "feliz": 3, "animada": 3, "estavel": 2, "melhor": 2, "mais calma": 2, "segura": 2, "instavel": 1, "agitada": 1, "ansiosa": 1, "chorando": 1, "triste": 1, "nervosa": 1, "crise": 0, "em crise": 0, "muito mal": 0}
+MAPA_ESCOLA = {"todos os dias": 3, "todos dias": 3, "frequentando": 3, "3 dias": 2, "3-4 dias": 2, "quase todos os dias": 2, "1-2 dias": 1, "1 dia": 1, "2 dias": 1, "pouco": 1, "nao foi": 0, "nao vai": 0, "faltou": 0, "sem escola": 0}
+MAPA_EVOLUCAO = {"melhorou muito": 3, "melhorou bastante": 3, "muito melhor": 3, "melhorou um pouco": 2, "melhorou": 2, "evoluindo": 2, "progresso": 2, "avanco": 2, "estagnou": 1, "mesma coisa": 1, "sem mudanca": 1, "regrediu": 0, "piorou": 0, "pior": 0}
+
+def achar_nota(texto_norm, mapa):
+    for palavra in sorted(mapa.keys(), key=len, reverse=True):
+        if palavra in texto_norm:
+            return palavra, mapa[palavra]
+    return "Não identificado", None
 
 def extrair_codigo(texto):
     m = re.search(r"crian[cç]a[_\s\-]*(\d+)", texto.lower())
@@ -55,32 +72,13 @@ def extrair_codigo(texto):
         return f"Criança_{m.group(1)}"
     return "Não identificado"
 
-def ler_docx(arquivo):
-    # Tenta ler com python-docx, se não tiver, lê como texto
-    try:
-        import docx
-        doc = docx.Document(arquivo)
-        textos = [p.text for p in doc.paragraphs]
-        # Também pega tabelas
-        for table in doc.tables:
-            for row in table.rows:
-                for cell in row.cells:
-                    textos.append(cell.text)
-        return "\n".join(textos)
-    except Exception as e:
-        return ""
-
 if "base" not in st.session_state:
     st.session_state.base = None
 if "avaliacoes" not in st.session_state:
     st.session_state.avaliacoes = []
 if "registros_word" not in st.session_state:
     st.session_state.registros_word = []
-if "passo" not in st.session_state:
-    st.session_state.passo = 0
-    st.session_state.dados = {}
 
-# --- 1. SUBIR EXCEL BASE ---
 st.header("1️⃣ Subir Excel Base")
 uploaded = st.file_uploader("Suba o Excel - Base_Dados_SFA (.xlsx)", type=["xlsx", "xls"], key="excel_base")
 if uploaded:
@@ -120,13 +118,8 @@ col_interv = achar(["total", "interven"])
 col_atendidos = achar(["atendidos", "núcleo", "nucleo"])
 col_custo = achar(["custo total", "custo"])
 
-# --- 2. BUSCA + FILTROS ---
 st.header("2️⃣ 🔍 Buscar por Criança")
-cb1, cb2 = st.columns([3, 1])
-with cb1:
-    busca = st.text_input("Buscar", placeholder="Digite: Criança_12 ou 12", key="busca_crianca", label_visibility="collapsed")
-with cb2:
-    st.button("🔍 BUSCAR", type="primary", use_container_width=True)
+busca = st.text_input("Buscar", placeholder="Digite: Criança_12 ou 12", key="busca_crianca")
 c2, c3, c4 = st.columns(3)
 with c2:
     op_regiao = sorted(df_total[col_regiao].dropna().astype(str).unique().tolist()) if col_regiao else []
@@ -140,6 +133,7 @@ with c4:
 if st.button("🧹 Limpar busca / Mostrar todos"):
     st.session_state["busca_crianca"] = ""
     st.rerun()
+
 df = df_total.copy()
 if busca:
     bl = str(busca).strip().lower()
@@ -166,7 +160,6 @@ if len(df) == 0:
     st.warning("⚠️ Nenhum caso. Clique em Limpar busca.")
     st.stop()
 
-# --- 3. PAINEL ---
 st.header("3️⃣ Painel de Impacto")
 concluidos = int((df[col_objetivo].astype(str).str.lower().str.strip() == "sim").sum()) if col_objetivo else 0
 s = df[col_status].astype(str) if col_status else pd.Series([""]*len(df))
@@ -178,7 +171,6 @@ no_prazo_perc = divisao_segura((antes+dentro), concluidos)*100
 total_interv = int(pd.to_numeric(df[col_interv], errors="coerce").fillna(0).sum()) if col_interv else 0
 total_atend = int(pd.to_numeric(df[col_atendidos], errors="coerce").fillna(0).sum()) if col_atendidos else 0
 custo_tot = float(pd.to_numeric(df[col_custo], errors="coerce").fillna(0).sum()) if col_custo else 0
-media_interv = divisao_segura(total_interv, concluidos)
 media_custo = divisao_segura(custo_tot, len(df))
 m1, m2, m3, m4 = st.columns(4)
 with m1: st.metric("Casos Filtrados", len(df))
@@ -190,20 +182,9 @@ with m5: st.metric("Pessoas Atendidas", total_atend)
 with m6: st.metric("Custo Total", formata_moeda(custo_tot))
 with m7: st.metric("Custo Médio / Criança", formata_moeda(media_custo))
 
-# --- HISTÓRIA ---
 st.header("💛 A História Por Trás dos Números")
-st.markdown("""
-**Antes:** A criança chega em acolhimento, afastada da família, com medo, sem vínculo.
-**Durante:** A equipe faz conversas com a família de origem, com a família acolhedora, com a Vara, relatórios, encaminhamentos.
-**Depois:** A criança volta para casa com o vínculo reconstruído, dentro do prazo.
-""")
-if col_objetivo:
-    cs = df[df[col_objetivo].astype(str).str.lower().str.strip() == "sim"]
-    if len(cs) > 0:
-        ex = cs.iloc[0]
-        st.success(f"**Exemplo real:** {ex[col_codigo] if col_codigo else 'Caso'} | Problema: {ex[col_problema] if col_problema else ''} | Desfecho: {ex[col_desfecho] if col_desfecho else ''} | Status: {ex[col_status] if col_status else ''}")
+st.markdown("**Antes:** A criança chega em acolhimento, afastada da família, com medo, sem vínculo. **Durante:** A equipe faz conversas, relatórios, encaminhamentos. **Depois:** A criança volta para casa com o vínculo reconstruído, dentro do prazo.")
 
-# --- 4. GRÁFICOS ---
 st.header("4️⃣ Gráficos de Impacto")
 g1, g2 = st.columns(2)
 with g1:
@@ -221,21 +202,12 @@ with g2:
         st.subheader("Por Região")
         st.bar_chart(df[col_regiao].value_counts())
 
-# --- 5. ALERTAS ---
 st.header("5️⃣ Alertas Automáticos")
 alertas = []
 if col_objetivo:
     sem_obj = df[df[col_objetivo].astype(str).str.strip() == ""]
     if len(sem_obj) > 0:
         alertas.append(f"⚠️ {len(sem_obj)} casos sem Objetivo Atingido.")
-if col_interv:
-    sem_interv = df[pd.to_numeric(df[col_interv], errors="coerce").fillna(0) == 0]
-    if len(sem_interv) > 0:
-        alertas.append(f"⚠️ {len(sem_interv)} casos com 0 intervenções.")
-if col_custo:
-    sem_custo = df[pd.to_numeric(df[col_custo], errors="coerce").fillna(0) == 0]
-    if len(sem_custo) > 0:
-        alertas.append(f"⚠️ {len(sem_custo)} casos sem custo.")
 if em_curso > 0:
     alertas.append(f"🔔 {em_curso} casos Em Acolhimento.")
 if apos > 0:
@@ -246,71 +218,62 @@ else:
     for a in alertas:
         st.warning(a)
 
-# --- 6. AUTOMAÇÃO WORD -> EXCEL - A PARTE NOVA ---
 st.header("6️⃣ 📄 Automação: Relatório em Word vira Dado em Excel")
-st.markdown("""
-**Como a equipe usa no dia a dia:**
-1. Escreve o relatório em Word como sempre, com texto livre
-2. Sobe o Word aqui embaixo
-3. O app lê, acha a criança, acha as palavras-chave e já transforma em nota 0-3
-4. Você baixa o Excel consolidado - ele vira sua base oficial, não some mais
-""")
-st.info("💡 Dica para a equipe: No Word, escreva sempre frases como: 'Vínculo forte', 'Criança estável', 'Foi todos os dias na escola', 'Melhorou muito'. Assim o app entende 100%.")
-
-# Modelo de Word para copiar
-st.markdown("**Modelo para copiar e colar no Word da equipe:**")
-st.code("""Relatório de Atendimento - SFA
+st.markdown("**Equipe escreve em Word como sempre. App lê e transforma em nota. Se ele não entender, você corrige na hora.**")
+st.code("""Modelo para copiar no Word:
 Criança: Criança_12
-Data: 16/11/2026
-Técnica: Roseane
-
 Vínculo com família de origem: em reconstrução
-Vínculo com família acolhedora: forte
 Estado emocional: estável
 Frequência escolar: foi 3 dias na escola
-Evolução: melhorou um pouco
-
-Observação: Mãe participou da visita, criança mais calma, combinamos retorno na sexta.""")
+Evolução: melhorou um pouco""")
 
 col_w1, col_w2 = st.columns(2)
 with col_w1:
-    arquivos_word = st.file_uploader("Suba 1 ou vários relatórios em Word (.docx)", type=["docx"], accept_multiple_files=True, key="word_upload")
-    quem_word = st.text_input("Quem está subindo os relatórios?", placeholder="Ex: Roseane", key="quem_word")
+    arquivos_word = st.file_uploader("Suba 1 ou vários relatórios em Word (.docx)", type=["docx"], accept_multiple_files=True, key="word_upload_v2")
+    quem_word = st.text_input("Quem está subindo?", placeholder="Ex: Roseane", key="quem_word_v2")
 with col_w2:
-    data_word = st.date_input("Data dos atendimentos", value=date.today(), key="data_word")
-    st.write("O app vai procurar no texto:")
-    st.write("- Criança_XX")
-    st.write("- Vínculo: forte / em reconstrução / frágil / rompendo")
-    st.write("- Emocional: tranquila / estável / instável / em crise")
-    st.write("- Escola: todos os dias / 3 dias / 1-2 dias / não foi")
-    st.write("- Evolução: melhorou muito / melhorou um pouco / estagnou / regrediu")
+    data_word = st.date_input("Data dos atendimentos", value=date.today(), key="data_word_v2")
+    st.write("Se o Word não for lido, use a Opção B abaixo:")
 
-if st.button("🔄 Transformar Word em Excel", type="primary", use_container_width=True):
-    if not arquivos_word:
-        st.error("Suba pelo menos 1 arquivo Word.")
-    else:
-        novos = 0
+st.markdown("**Opção B - Se o Word não subir, cole o texto aqui (sempre funciona):**")
+texto_colado = st.text_area("Cole aqui o texto do relatório Word", placeholder="Cole o relatório inteiro aqui... Ex: Criança_12, vínculo em reconstrução, criança estável...", height=120)
+nome_colado = st.text_input("Nome para esse relatório colado", placeholder="Ex: relatorio_Crianca_12", key="nome_colado")
+
+if st.button("🔄 Transformar em Excel", type="primary", use_container_width=True):
+    itens = []
+    if arquivos_word:
         for arq in arquivos_word:
-            texto = ler_docx(arq)
-            if not texto.strip():
-                st.warning(f"⚠️ {arq.name} veio vazio ou não consegui ler. Tente salvar como .docx de novo.")
-                continue
+            texto, status = ler_docx_sem_biblioteca(arq)
+            st.info(f"📄 {arq.name} - {status}")
+            if texto.strip():
+                st.expander(f"👁️ Ver o que o app leu de {arq.name}").write(texto[:2000])
+                itens.append((arq.name, texto))
+            else:
+                st.error(f"❌ {arq.name} veio vazio. Cole o texto na Opção B.")
+    if texto_colado.strip():
+        nome_arq = nome_colado.strip() if nome_colado.strip() else "texto_colado.docx"
+        itens.append((nome_arq, texto_colado))
+        st.info(f"📄 Texto colado - lido ✅ - {len(texto_colado)} caracteres")
+    if not itens:
+        st.error("Suba um Word ou cole o texto. Nenhum dos dois veio.")
+    else:
+        for nome_arq, texto in itens:
+            texto_norm = normalizar(texto)
             codigo = extrair_codigo(texto)
-            # Se não achou código no texto, tenta no nome do arquivo
             if codigo == "Não identificado":
-                codigo = extrair_codigo(arq.name)
-            pv, nv = nota_por_palavras(texto, MAPA_VINCULO)
-            pe, ne = nota_por_palavras(texto, MAPA_EMOCIONAL)
-            psc, nsc = nota_por_palavras(texto, MAPA_ESCOLA)
-            pev, nev = nota_por_palavras(texto, MAPA_EVOLUCAO)
+                codigo = extrair_codigo(nome_arq)
+            pv, nv = achar_nota(texto_norm, MAPA_VINCULO)
+            pe, ne = achar_nota(texto_norm, MAPA_EMOCIONAL)
+            psc, nsc = achar_nota(texto_norm, MAPA_ESCOLA)
+            pev, nev = achar_nota(texto_norm, MAPA_EVOLUCAO)
             notas = [x for x in [nv, ne, nsc, nev] if x is not None]
             media = round(sum(notas)/len(notas), 2) if notas else 0
             registro = {
                 "Data": str(data_word),
                 "Quem subiu": quem_word,
-                "Arquivo Word": arq.name,
+                "Arquivo Word": nome_arq,
                 "Cód. Criança": codigo,
-                "Texto completo do Word": texto[:800],
+                "Texto completo do Word": texto[:1000],
                 "Vínculo (texto encontrado)": pv,
                 "Vínculo (nota 0-3)": nv if nv is not None else "",
                 "Emocional (texto)": pe,
@@ -322,16 +285,13 @@ if st.button("🔄 Transformar Word em Excel", type="primary", use_container_wid
                 "Média do atendimento (0-3)": media,
             }
             st.session_state.registros_word.append(registro)
-            novos += 1
-        st.success(f"✅ {novos} relatório(s) transformados em dados!")
+        st.success(f"✅ {len(itens)} relatório(s) transformados!")
         st.rerun()
 
-# Mostra tabela consolidada + correção manual + download
 if st.session_state.registros_word:
-    st.subheader(f"📊 Planilha Consolidada - {len(st.session_state.registros_word)} relatórios transformados")
+    st.subheader(f"📊 Planilha Consolidada - {len(st.session_state.registros_word)} relatórios")
     df_word = pd.DataFrame(st.session_state.registros_word)
     st.dataframe(df_word, use_container_width=True)
-    # Médias
     for col_nota in ["Vínculo (nota 0-3)", "Emocional (nota 0-3)", "Escola (nota 0-3)", "Evolução (nota 0-3)"]:
         df_word[col_nota] = pd.to_numeric(df_word[col_nota], errors="coerce")
     cm1, cm2, cm3, cm4 = st.columns(4)
@@ -339,44 +299,35 @@ if st.session_state.registros_word:
     with cm2: st.metric("Média Emocional", f"{df_word['Emocional (nota 0-3)'].mean():.2f} / 3")
     with cm3: st.metric("Média Escola", f"{df_word['Escola (nota 0-3)'].mean():.2f} / 3")
     with cm4: st.metric("Média Evolução", f"{df_word['Evolução (nota 0-3)'].mean():.2f} / 3")
-    st.bar_chart(df_word.groupby("Cód. Criança")["Média do atendimento (0-3)"].mean())
-    st.markdown("**Correção manual:** Se o app entendeu alguma palavra errado, corrija aqui antes de baixar. O Excel final já sai corrigido.")
-    df_editado = st.data_editor(df_word, use_container_width=True, num_rows="dynamic", key="editor_word")
-    # Salva edição
+    st.markdown("**✏️ Correção manual - se o app entendeu errado, corrija aqui:**")
+    df_editado = st.data_editor(df_word, use_container_width=True, num_rows="dynamic", key="editor_word_v2")
     if st.button("💾 Salvar correções"):
         st.session_state.registros_word = df_editado.to_dict("records")
         st.success("✅ Correções salvas!")
         st.rerun()
-    # Download - ESSA É A PERSISTÊNCIA: baixa e vira base oficial
-    csv_bytes = pd.DataFrame(st.session_state.registros_word).to_csv(index=False).encode("utf-8")
-    st.download_button("⬇️ Baixar Excel Consolidado - Word virou Excel (CSV)", csv_bytes, "relatorios_word_para_excel_sfa.csv", "text/csv")
-    st.info("⚠️ IMPORTANTE - Para não perder: Baixe esse CSV e guarde no Drive. Na próxima vez, suba ele junto com os novos Words. Assim ele acumula e nunca some.")
-    # Upload de CSV antigo para acumular
-    st.markdown("**Acumular com planilha antiga:**")
-    csv_antigo = st.file_uploader("Suba o CSV que você baixou da última vez para acumular", type=["csv"], key="csv_antigo")
+    st.download_button("⬇️ Baixar Excel Consolidado (CSV)", pd.DataFrame(st.session_state.registros_word).to_csv(index=False).encode("utf-8"), "relatorios_word_para_excel_sfa.csv", "text/csv")
+    st.info("⚠️ Para não perder: Baixe o CSV e guarde no Drive. Na próxima vez, suba ele de novo para acumular.")
+    csv_antigo = st.file_uploader("Suba o CSV antigo para acumular", type=["csv"], key="csv_antigo_v2")
     if csv_antigo:
         try:
             df_ant = pd.read_csv(csv_antigo)
-            # Evita duplicar pelo nome do arquivo
-            nomes_existentes = set(pd.DataFrame(st.session_state.registros_word)["Arquivo Word"].astype(str)) if len(st.session_state.registros_word) > 0 else set()
-            novos_ant = df_ant[~df_ant["Arquivo Word"].astype(str).isin(nomes_existentes)]
-            if len(novos_ant) > 0:
+            nomes_exist = set(pd.DataFrame(st.session_state.registros_word)["Arquivo Word"].astype(str)) if len(st.session_state.registros_word)>0 else set()
+            novos_ant = df_ant[~df_ant["Arquivo Word"].astype(str).isin(nomes_exist)]
+            if len(novos_ant)>0:
                 st.session_state.registros_word = st.session_state.registros_word + novos_ant.to_dict("records")
-                st.success(f"✅ Acumulado! +{len(novos_ant)} registros antigos. Total agora: {len(st.session_state.registros_word)}")
+                st.success(f"✅ Acumulado +{len(novos_ant)}")
                 st.rerun()
             else:
-                st.info("Já estava tudo acumulado, nenhum registro novo.")
+                st.info("Já estava acumulado.")
         except Exception as e:
-            st.error(f"Erro ao acumular: {e}")
-    if st.button("🗑️ Limpar todos os registros Word"):
+            st.error(f"Erro: {e}")
+    if st.button("🗑️ Limpar todos"):
         st.session_state.registros_word = []
         st.rerun()
 else:
     st.info("Nenhum Word transformado ainda. Suba 1 Word de teste para ver a mágica.")
 
-# --- 7. VALIDAÇÃO ---
 st.header("7️⃣ Validação Humana - 3 Avaliadoras")
-st.write("Passa com **2 de 3 aprovações**. Você organiza, não avalia.")
 nome = st.text_input("Nome da avaliadora")
 dec = st.radio("Decisão", ["Aprovo", "Reprovo - precisa ajustar"], horizontal=True)
 coment = st.text_area("Comentário / O que ajustar?")
@@ -402,7 +353,6 @@ if st.session_state.avaliacoes:
         st.session_state.avaliacoes = []
         st.rerun()
 
-# --- 8. RELATÓRIO ---
 st.header("8️⃣ Relatório em PDF")
 texto_validacao = ""
 if st.session_state.avaliacoes:
@@ -417,29 +367,21 @@ if n_word > 0:
     df_w = pd.DataFrame(st.session_state.registros_word)
     df_w["Média do atendimento (0-3)"] = pd.to_numeric(df_w["Média do atendimento (0-3)"], errors="coerce")
     media_word_txt = f"{df_w['Média do atendimento (0-3)'].mean():.2f} / 3 em {n_word} relatórios"
-
 texto_relatorio = f"""RELATÓRIO DE IMPACTO SOCIAL - SFA
-
 RESUMO:
 - Casos analisados: {len(df)} | Concluídos: {int(concluidos)}
 - % No Prazo: {no_prazo_perc:.1f}% ({antes} antes + {dentro} dentro)
 - Total Intervenções: {total_interv} | Pessoas Atendidas: {total_atend}
 - Custo Total: {formata_moeda(custo_tot)} | Médio: {formata_moeda(media_custo)}
-
 AUTOMAÇÃO WORD -> EXCEL:
-- Relatórios em Word transformados em dados: {n_word}
-- Média geral dos atendimentos: {media_word_txt}
-- Equipe escreve em Word, app transforma em nota 0-3. Nada se perde.
-
+- Relatórios em Word transformados: {n_word}
+- Média geral: {media_word_txt}
 ALERTAS:
 {texto_alertas}
-
 VALIDAÇÃO:
 {texto_validacao}
-
 Fonte: Base real do Excel + relatórios Word transformados. Dados anonimizados - LGPD.
 """
 st.text_area("Prévia do Relatório", texto_relatorio, height=300)
 st.download_button("⬇️ Baixar Relatório em TXT (para virar PDF)", texto_relatorio.encode("utf-8"), "relatorio_impacto_sfa.txt", "text/plain")
 st.download_button("⬇️ Baixar Base Filtrada em CSV", df.to_csv(index=False).encode("utf-8"), "base_filtrada_sfa.csv", "text/csv")
-st.info("Para virar PDF: Baixa o TXT > Abre no Word / Google Docs > Arquivo > Baixar como PDF. Ou Ctrl+P > Salvar como PDF.")
