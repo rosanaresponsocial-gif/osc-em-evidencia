@@ -6,6 +6,18 @@ from io import BytesIO
 
 st.set_page_config(page_title="SFA - Família Acolhedora", layout="wide")
 
+# ---------- CORES: LARANJA / BRANCO / VERDE ----------
+st.markdown("""
+<style>
+.stApp { background-color: #FFFFFF; }
+h1, h2, h3 { color: #E85D04 !important; }
+h1 { border-bottom: 4px solid #2E9E5B; padding-bottom: 10px; }
+div.stButton > button { background-color: #E85D04; color: white; border: none; font-weight: bold; border-radius: 10px; }
+div.stButton > button:hover { background-color: #2E9E5B; color: white; }
+div[data-testid="stMetric"] { background-color: #FFF3E6; border-left: 5px solid #2E9E5B; padding: 10px; border-radius: 10px; }
+</style>
+""", unsafe_allow_html=True)
+
 try:
     st.image("logo.png", width=280)
 except:
@@ -59,9 +71,7 @@ if arquivo is not None:
         df = pd.read_excel(arquivo, sheet_name=nome_aba, header=linha_cab)
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how="all")
-        st.success(f"✅ Base carregada: {len(df)} casos | Aba: {nome_aba}")
-        st.info(f"💡 Achei o cabeçalho na linha {linha_cab+1} do Excel")
-        st.write("Colunas encontradas:", list(df.columns))
+        st.success(f"✅ Base carregada: {len(df)} casos")
     except Exception as e:
         st.error(f"Erro ao ler Excel: {e}")
         st.stop()
@@ -92,14 +102,10 @@ col_resultado = achar_coluna(["resultado"])
 col_bolsa = achar_coluna(["bolsa"])
 col_equipe = achar_coluna(["equipe"])
 
-# ---------- 2 - BUSCAR - VERSÃO QUE FUNCIONA NO CELULAR ----------
+# ---------- 2 - BUSCAR ----------
 st.markdown("### 2️⃣ 🔍 Buscar por Criança")
-st.caption("No celular, use a LISTA abaixo - é mais fácil que digitar. Digitar só funciona se apertar Enter / Concluir.")
-
-# 1) Campo digitar
+st.caption("Use a LISTA abaixo - funciona no celular sem precisar apertar Enter.")
 busca = st.text_input("Buscar digitando", placeholder="Digite: 13 e aperte Enter / Concluir", key="busca_crianca")
-
-# 2) Lista - ESTA SEMPRE FUNCIONA
 lista_criancas = ["Todas"] + sorted([str(x) for x in df[col_crianca].dropna().unique()])
 escolha = st.selectbox("Ou escolha a criança na lista:", lista_criancas, key="escolha_crianca")
 
@@ -116,25 +122,18 @@ with c3:
 
 st.button("🧹 Limpar busca / Mostrar todos", on_click=limpar_busca)
 
-# FILTRO - usa a lista PRIMEIRO, depois o texto
 df_f = df.copy()
-
-# Se escolheu na lista, filtra por ela
 if escolha != "Todas":
     df_f = df_f[df_f[col_crianca].astype(str) == escolha]
-# Se digitou, filtra também
 elif busca and busca.strip() != "":
     b = sem_acento(busca)
     b_num = re.sub(r"\D", "", b)
     def match(v):
         s = sem_acento(v)
         s_num = re.sub(r"\D", "", s)
-        if b in s:
-            return True
-        if b_num != "" and b_num == s_num:
-            return True
-        if b_num != "" and b_num in s_num:
-            return True
+        if b in s: return True
+        if b_num != "" and b_num == s_num: return True
+        if b_num != "" and b_num in s_num: return True
         return False
     df_f = df_f[df_f[col_crianca].apply(match)]
 
@@ -153,27 +152,23 @@ if col_bolsa:
     try:
         total_bolsa = pd.to_numeric(df[col_bolsa], errors="coerce").sum()
         st.metric("Total Bolsa-Auxílio", f"R$ {total_bolsa:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    except:
-        pass
+    except: pass
 if col_equipe:
     try:
         total_eq = pd.to_numeric(df[col_equipe], errors="coerce").sum()
         st.metric("Total Equipe / Estrutura", f"R$ {total_eq:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-    except:
-        pass
+    except: pass
 
 st.markdown("### 4️⃣ 📊 Gráficos de Impacto")
 g1, g2 = st.columns(2)
 with g1:
     if col_problema:
-        vc = df[col_problema].value_counts()
         st.write("**Problema Inicial**")
-        st.bar_chart(vc)
+        st.bar_chart(df[col_problema].value_counts())
 with g2:
     if col_prazo:
-        vc2 = df[col_prazo].value_counts()
         st.write("**Status do Prazo**")
-        st.bar_chart(vc2)
+        st.bar_chart(df[col_prazo].value_counts())
 
 st.markdown("### 5️⃣ 🔄 Antes x Depois")
 if col_problema and col_resultado:
