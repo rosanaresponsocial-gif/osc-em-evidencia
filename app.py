@@ -49,19 +49,16 @@ if not st.session_state.logado:
     st.stop()
 
 def achar_coluna_codigo(df):
-    # 1 - Procura coluna que tem SFA no valor
     for col in df.columns:
         vals = df[col].astype(str).str.strip().tolist()
         if any("SFA" in v for v in vals):
             return col
-    # 2 - Procura pelo nome
     for col in df.columns:
         nome = col.lower()
         if "id" in nome and "caso" in nome:
             return col
         if "codigo" in nome or "código" in nome:
             return col
-    # 3 - Se nao achou, usa a primeira coluna que nao seja numero puro
     return df.columns[0]
 
 def carregar_base():
@@ -228,20 +225,18 @@ with aba3:
         def gerar_pdf():
             buf = io.BytesIO()
             with PdfPages(buf) as pdf:
-                # PAGINA 1 - SEM tight_layout, SEM fig.text - usa ax com coordenadas fixas
+                # PAGINA 1 - usa ax com coordenadas fixas, sem tight_layout
                 fig = plt.figure(figsize=(8.5, 11))
                 fig.patch.set_facecolor("#FFF8E7")
                 ax = fig.add_axes([0, 0, 1, 1])
                 ax.set_xlim(0, 10)
                 ax.set_ylim(0, 11)
                 ax.axis("off")
-                # Faixa verde
                 ax.add_patch(plt.Rectangle((0, 9.8), 10, 1.2, facecolor="#2E7D32", edgecolor="none"))
                 ax.text(5, 10.6, "OSC em Evidencia - SFA", ha="center", va="center", fontsize=20, weight="bold", color="white")
                 ax.text(5, 10.1, "Relatorio Alegre - Criancas, Adolescentes e Familias", ha="center", va="center", fontsize=11, color="white")
                 ax.text(5, 9.3, "Familias diversas, infancias felizes!", ha="center", va="center", fontsize=13, color="#2E7D32", weight="bold")
                 ax.text(5, 8.9, "Cada crianca importa! Cada familia importa!", ha="center", va="center", fontsize=11, color="#E65100")
-                # Linhas do resumo - cada uma em uma linha separada, com x fixo
                 ax.text(1.0, 8.0, "Casos com relatorio: " + str(len(df_com_dados)), ha="left", va="center", fontsize=13, color="#222222")
                 ax.text(1.0, 7.5, "Total de Visitas: " + str(int(df_com_dados["Total Visitas"].sum())), ha="left", va="center", fontsize=13, color="#222222")
                 ax.text(1.0, 7.0, "Total de Contatos: " + str(int(df_com_dados["Total Contatos"].sum())), ha="left", va="center", fontsize=13, color="#222222")
@@ -259,9 +254,11 @@ with aba3:
                 pdf.savefig(fig)
                 plt.close(fig)
 
-                # PAGINA 2 - GRAFICO DEITADO
+                # PAGINA 2 - CORRIGIDA: margem esquerda grande para nao cortar os nomes
                 fig2, ax2 = plt.subplots(figsize=(8.5, 5))
                 fig2.patch.set_facecolor("white")
+                # Deixa 30% da esquerda livre para os nomes
+                fig2.subplots_adjust(left=0.30, right=0.92, top=0.85, bottom=0.15)
                 df_plot = df_total.sort_values("Quantidade", ascending=True)
                 cores = ["#2E7D32", "#66BB6A", "#FF8C00", "#FFB74D", "#E65100"]
                 ax2.barh(df_plot["Tipo"], df_plot["Quantidade"], color=cores[:len(df_plot)], height=0.55)
@@ -272,10 +269,11 @@ with aba3:
                 for i, v in enumerate(df_plot["Quantidade"]):
                     ax2.text(int(v) + 0.2, i, str(int(v)), va="center", ha="left", weight="bold", color="#2E7D32", fontsize=12)
                 ax2.set_xlim(0, max(int(df_plot["Quantidade"].max()) + 2, 5))
+                # Nao usar tight_layout aqui, ele que cortava os nomes
                 pdf.savefig(fig2)
                 plt.close(fig2)
 
-                # PAGINA 3 - TABELA COM CODIGO LARGO
+                # PAGINA 3 - TABELA
                 fig3, ax3 = plt.subplots(figsize=(8.5, 6))
                 ax3.axis("off")
                 ax3.set_title("Resumo por Crianca", color="#2E7D32", weight="bold", fontsize=14, pad=20)
