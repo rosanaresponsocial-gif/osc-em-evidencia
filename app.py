@@ -29,7 +29,14 @@ def carregar_base():
     if not os.path.exists(ARQUIVO_BASE):
         st.error("Base nao encontrada. Fale com a administradora.")
         st.stop()
-    return pd.read_excel(ARQUIVO_BASE, dtype=str).fillna("")
+    try:
+        return pd.read_excel(ARQUIVO_BASE, dtype=str).fillna("")
+    except Exception:
+        try:
+            return pd.read_csv(ARQUIVO_BASE, dtype=str).fillna("")
+        except Exception:
+            st.error("A base esta com formato invalido. Fale com a administradora para subir a base de novo.")
+            st.stop()
 def carregar_complementar():
     if not os.path.exists(ARQUIVO_COMPLEMENTAR):
         return pd.DataFrame(columns=["codigo", "preenchido_por", "observacao", "data_avaliacao"])
