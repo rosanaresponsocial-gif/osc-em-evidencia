@@ -126,9 +126,23 @@ if uploaded:
                 break
         if aba is None:
             aba = xls.sheet_names[1] if len(xls.sheet_names) > 1 else xls.sheet_names[0]
-        df = pd.read_excel(uploaded, sheet_name=aba, header=0).dropna(how="all")
+        # CORRECAO GRAFICO: Acha sozinho a linha do cabecalho de verdade - pula titulo
+        df_teste = pd.read_excel(uploaded, sheet_name=aba, header=None)
+        linha_cabecalho = 0
+        for i, linha in df_teste.iterrows():
+            texto_linha = " ".join([str(x).lower() for x in linha.values if pd.notna(x)])
+            if "crian" in texto_linha or "regi" in texto_linha or "problema" in texto_linha or "desfecho" in texto_linha or "objetivo" in texto_linha:
+                linha_cabecalho = i
+                break
+        df = pd.read_excel(uploaded, sheet_name=aba, header=linha_cabecalho).dropna(how="all")
+        # Tira colunas vazias Unnamed
+        df = df.loc[:, ~df.columns.astype(str).str.contains("Unnamed")]
+        df = df.dropna(axis=1, how="all")
+        # Limpa nomes das colunas - tira espaco extra
+        df.columns = [str(c).strip() for c in df.columns]
         st.session_state.base = df
         st.success(f"✅ Base carregada: {len(df)} casos | Aba: {aba}")
+        st.info(f"💡 Achei o cabeçalho na linha {linha_cabecalho + 1} do Excel")
         st.caption(f"Colunas encontradas: {list(df.columns)}")
     except Exception as e:
         st.error(f"Erro: {e}")
