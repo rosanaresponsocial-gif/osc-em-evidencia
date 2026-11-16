@@ -6,7 +6,7 @@ from fpdf import FPDF
 
 st.set_page_config(page_title="SFA - Restrito", layout="wide")
 
-ARQUIVO_BASE = "dados_base.csv"
+ARQUIVO_BASE = "dados_base.xlsx"
 ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_COMPLEMENTAR = "dados_complementares.csv"
 ADMIN_LOGIN = "sfaevidencia"
@@ -29,7 +29,7 @@ def carregar_base():
     if not os.path.exists(ARQUIVO_BASE):
         st.error("Base nao encontrada. Fale com a administradora.")
         st.stop()
-        return pd.read_csv(ARQUIVO_BASE, dtype=str).fillna("")
+           return pd.read_excel(ARQUIVO_BASE, dtype=str).fillna("")
 
 def carregar_complementar():
     if not os.path.exists(ARQUIVO_COMPLEMENTAR):
