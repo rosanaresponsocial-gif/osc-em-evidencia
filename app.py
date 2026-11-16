@@ -1,463 +1,271 @@
 import streamlit as st
 import pandas as pd
 import re
-import io
-import os
-import unicodedata
-from datetime import date
+from io import BytesIO
 
-st.set_page_config(page_title="SFA - Família Acolhedora", layout="wide", page_icon="🏠")
+st.set_page_config(page_title="SFA - Família Acolhedora", layout="wide")
 
-st.markdown("""
-<style>
-    .stApp { background-color: #FFFFFF; }
-    h1 { color: #1E7A34 !important; font-size: 36px !important; }
-    h2 { color: #1E7A34 !important; border-left: 6px solid #FF7A00; padding-left: 12px; background: #FFF4E6; padding-top: 8px; padding-bottom: 8px; border-radius: 0 12px 12px 0; }
-    h3 { color: #E86A00 !important; }
-    .stMetric { background-color: #F0F9F1; padding: 15px; border-radius: 14px; border: 2px solid #C8E6C9; }
-    .stMetric label { color: #1E7A34 !important; font-weight: bold; }
-    .stButton > button { background-color: #FF7A00 !important; color: white !important; border-radius: 12px; font-weight: bold; border: none; padding: 10px 20px; }
-    .stButton > button:hover { background-color: #1E7A34 !important; }
-    .stDownloadButton > button { background-color: #1E7A34 !important; color: white !important; border-radius: 12px; font-weight: bold; }
-    .stTextInput > div > div > input, .stTextArea > div > div > textarea { border-radius: 12px; border: 2px solid #FFB366; }
-    div[data-testid="stExpander"] { border: 2px solid #FFB366; border-radius: 12px; }
-</style>
-""", unsafe_allow_html=True)
+# ---------- LOGO ----------
+try:
+    st.image("logo.png", width=280)
+except:
+    st.markdown("### 🏠🧒👧 SFA - Família Acolhedora")
 
-if os.path.exists("logo.png"):
-    c_logo1, c_logo2, c_logo3 = st.columns([1, 2, 1])
-    with c_logo2:
-        st.image("logo.png", width=320)
-else:
-    st.markdown("<div style='text-align:center; font-size:70px;'>🏠 🧒 👧 🌱</div>", unsafe_allow_html=True)
-    st.caption("Dica: Suba a imagem do logo como logo.png no GitHub para ela aparecer aqui no topo.")
+st.title("SFA - Família Acolhedora em Evidência")
+st.markdown("Sistema de evidências - 36 casos | OSC em Evidência")
 
-st.markdown("<div style='text-align:center;'><h1>🏠 SFA - Família Acolhedora</h1><h3 style='color:#FF7A00;'>OSC em Evidência | Relatório de Impacto Social</h3><p style='font-size:18px;'>🧒 <b>Toda criança merece uma família.</b> 👨‍👩‍👧 <b>Toda família merece apoio.</b> 🌱 <b>Todo vínculo pode ser reconstruído.</b></p></div>", unsafe_allow_html=True)
-st.markdown("<div style='background:#1E7A34; color:white; padding:12px; border-radius:12px; text-align:center; font-size:16px;'>💚 <b>A equipe escreve em Word.</b> 🧡 <b>O app transforma em dado.</b> 🤍 <b>Nada se perde.</b></div>", unsafe_allow_html=True)
-st.markdown("---")
-
-def divisao_segura(num, den):
-    try:
-        if den is None or den == 0 or pd.isna(den):
-            return 0
-        return float(num) / float(den)
-    except:
-        return 0
-
-def formata_moeda(v):
-    try:
-        return f"R$ {float(v):,.2f}"
-    except:
-        return "R$ 0,00"
-
-def normalizar(texto):
-    if not texto:
-        return ""
-    t = unicodedata.normalize('NFKD', texto).encode('ASCII', 'ignore').decode('ASCII')
-    return t.lower()
-
-def ler_docx_sem_biblioteca(arquivo):
-    try:
-        import zipfile
-        arquivo.seek(0)
-        with zipfile.ZipFile(arquivo) as z:
-            xml_content = z.read('word/document.xml')
-            textos = re.findall(r'<w:t[^>]*>(.*?)</w:t>', xml_content.decode())
-            texto2 = " ".join(textos)
-            if texto2.strip():
-                return texto2, "Lido ✅"
-    except Exception as e:
-        return "", f"Não consegui ler: {e}"
-    return "", "Vazio"
-
-MAPA_VINCULO = {"forte": 3, "bom": 3, "otimo": 3, "excelente": 3, "muito bom": 3, "reconstrucao": 2, "reconstruindo": 2, "melhorando": 2, "razoavel": 2, "regular": 2, "fragil": 1, "fraco": 1, "delicado": 1, "dificil": 1, "distante": 1, "rompendo": 0, "rompido": 0, "ausente": 0, "nenhum": 0, "sem vinculo": 0}
-MAPA_EMOCIONAL = {"tranquila": 3, "tranquilo": 3, "calma": 3, "bem": 3, "feliz": 3, "animada": 3, "estavel": 2, "melhor": 2, "mais calma": 2, "segura": 2, "instavel": 1, "agitada": 1, "ansiosa": 1, "chorando": 1, "triste": 1, "nervosa": 1, "crise": 0, "em crise": 0, "muito mal": 0}
-MAPA_ESCOLA = {"todos os dias": 3, "todos dias": 3, "frequentando": 3, "3 dias": 2, "3-4 dias": 2, "quase todos os dias": 2, "1-2 dias": 1, "1 dia": 1, "2 dias": 1, "pouco": 1, "nao foi": 0, "nao vai": 0, "faltou": 0, "sem escola": 0}
-MAPA_EVOLUCAO = {"melhorou muito": 3, "melhorou bastante": 3, "muito melhor": 3, "melhorou um pouco": 2, "melhorou": 2, "evoluindo": 2, "progresso": 2, "avanco": 2, "estagnou": 1, "mesma coisa": 1, "sem mudanca": 1, "regrediu": 0, "piorou": 0, "pior": 0}
-
-def achar_nota(texto_norm, mapa):
-    for palavra in sorted(mapa.keys(), key=len, reverse=True):
-        if palavra in texto_norm:
-            return palavra, mapa[palavra]
-    return "Não identificado", None
-
-def extrair_codigo(texto):
-    m = re.search(r"crian[cç]a[_\s\-]*(\d+)", texto.lower())
-    if m:
-        return f"Criança_{m.group(1)}"
-    return "Não identificado"
-
-def mostrar_grafico(df, coluna, titulo, emoji):
-    st.subheader(f"{emoji} {titulo}")
-    if coluna is None:
-        st.warning(f"⚠️ Coluna não encontrada no Excel para: {titulo}")
-        st.caption(f"Colunas que o app achou: {list(df.columns)}")
-        return
-    try:
-        contagem = df[coluna].fillna("Sem informação").astype(str).str.strip().value_counts()
-        if len(contagem) == 0:
-            st.info("Sem dados para mostrar aqui.")
-            return
-        st.bar_chart(contagem, color="#FF7A00")
-        st.caption(f"Total: {int(contagem.sum())} casos | Coluna usada: {coluna}")
-        df_tab = contagem.reset_index()
-        df_tab.columns = [titulo, "Quantidade"]
-        st.dataframe(df_tab, use_container_width=True)
-    except Exception as e:
-        st.error(f"Não consegui desenhar o gráfico: {e}")
-        st.dataframe(df[coluna].value_counts(), use_container_width=True)
-
-if "base" not in st.session_state:
-    st.session_state.base = None
+# ---------- ESTADO INICIAL ----------
 if "avaliacoes" not in st.session_state:
-    st.session_state.avaliacoes = []
-if "registros_word" not in st.session_state:
-    st.session_state.registros_word = []
-
-st.header("1️⃣ Subir Excel Base")
-uploaded = st.file_uploader("Suba o Excel - Base_Dados_SFA (.xlsx)", type=["xlsx", "xls"], key="excel_base")
-if uploaded:
-    try:
-        xls = pd.ExcelFile(uploaded)
-        aba = None
-        for n in xls.sheet_names:
-            if any(p in n.lower() for p in ["base", "dados", "casos", "sfa"]):
-                aba = n
-                break
-        if aba is None:
-            aba = xls.sheet_names[1] if len(xls.sheet_names) > 1 else xls.sheet_names[0]
-        df_teste = pd.read_excel(uploaded, sheet_name=aba, header=None)
-        linha_cabecalho = 0
-        palavras_chave = ["crian", "regi", "problema", "desfecho", "objetivo", "status", "prazo", "custo", "interven"]
-        for i, linha in df_teste.iterrows():
-            valores = [str(x).strip() for x in linha.values if pd.notna(x) and str(x).strip() != ""]
-            if len(valores) < 4:
-                continue
-            texto_linha = " ".join(valores).lower()
-            pontos = sum(1 for p in palavras_chave if p in texto_linha)
-            if pontos >= 2:
-                linha_cabecalho = i
-                break
-        df = pd.read_excel(uploaded, sheet_name=aba, header=linha_cabecalho).dropna(how="all")
-        df = df.loc[:, ~df.columns.astype(str).str.contains("Unnamed")]
-        df = df.dropna(axis=1, how="all")
-        df.columns = [str(c).strip() for c in df.columns]
-        st.session_state.base = df
-        st.success(f"✅ Base carregada: {len(df)} casos | Aba: {aba}")
-        st.info(f"💡 Achei o cabeçalho na linha {linha_cabecalho + 1} do Excel")
-        st.caption(f"Colunas encontradas: {list(df.columns)}")
-    except Exception as e:
-        st.error(f"Erro: {e}")
-
-if st.session_state.base is None:
-    st.info("👆 Suba o Excel primeiro.")
-    st.stop()
-
-df_total = st.session_state.base.copy()
-def achar(palavras):
-    for c in df_total.columns:
-        if any(p in str(c).lower() for p in palavras):
-            return c
-    return None
-
-col_codigo = achar(["cód", "cod", "criança", "crianca"])
-col_regiao = achar(["região", "regiao"])
-col_problema = achar(["problema"])
-col_desfecho = achar(["desfecho"])
-col_objetivo = achar(["objetivo"])
-# CORRIGIDO: Pega Status do Prazo, NUNCA Prazo Estimado
-col_status = None
-for c in df_total.columns:
-    if "status" in str(c).lower():
-        col_status = c
-        break
-if col_status is None:
-    for c in df_total.columns:
-        if "prazo" in str(c).lower() and "estimado" not in str(c).lower():
-            col_status = c
-            break
-col_interv = achar(["total", "interven"])
-col_atendidos = achar(["atendidos", "núcleo", "nucleo"])
-col_custo = achar(["custo total", "custo"])
-
-st.header("2️⃣ 🔍 Buscar por Criança")
-busca = st.text_input("Buscar", placeholder="Digite: Criança_12 ou 12", key="busca_crianca")
-c2, c3, c4 = st.columns(3)
-with c2:
-    op_regiao = sorted(df_total[col_regiao].dropna().astype(str).unique().tolist()) if col_regiao else []
-    filtro_regiao = st.selectbox("Filtrar por Região", ["Todas"] + op_regiao)
-with c3:
-    op_problema = sorted(df_total[col_problema].dropna().astype(str).unique().tolist()) if col_problema else []
-    filtro_problema = st.selectbox("Filtrar por Problema", ["Todos"] + op_problema)
-with c4:
-    op_status = sorted(df_total[col_status].dropna().astype(str).unique().tolist()) if col_status else []
-    filtro_status = st.selectbox("Filtrar por Status do Prazo", ["Todos"] + op_status)
-if st.button("🧹 Limpar busca / Mostrar todos"):
+    st.session_state["avaliacoes"] = []
+if "busca_crianca" not in st.session_state:
     st.session_state["busca_crianca"] = ""
-    st.rerun()
+if "filtro_regiao" not in st.session_state:
+    st.session_state["filtro_regiao"] = "Todas"
+if "filtro_problema" not in st.session_state:
+    st.session_state["filtro_problema"] = "Todos"
+if "filtro_prazo" not in st.session_state:
+    st.session_state["filtro_prazo"] = "Todos"
 
-df = df_total.copy()
-if busca:
-    bl = str(busca).strip().lower()
-    mask = pd.Series([False]*len(df))
-    for col in df.columns:
-        try:
-            mask = mask | df[col].astype(str).str.lower().str.contains(bl, na=False)
-        except:
-            pass
-    df = df[mask]
-    if len(df) > 0:
-        st.success(f"✅ Encontrei {len(df)} caso(s) com '{busca}'")
-    else:
-        st.warning(f"⚠️ Nenhum caso com '{busca}'")
-if filtro_regiao != "Todas" and col_regiao:
-    df = df[df[col_regiao].astype(str) == filtro_regiao]
-if filtro_problema != "Todos" and col_problema:
-    df = df[df[col_problema].astype(str) == filtro_problema]
-if filtro_status != "Todos" and col_status:
-    df = df[df[col_status].astype(str) == filtro_status]
-st.write(f"Mostrando **{len(df)}** de **{len(df_total)}** casos.")
-st.dataframe(df, use_container_width=True)
-if len(df) == 0:
-    st.warning("⚠️ Nenhum caso. Clique em Limpar busca.")
+def limpar_busca():
+    st.session_state["busca_crianca"] = ""
+    st.session_state["filtro_regiao"] = "Todas"
+    st.session_state["filtro_problema"] = "Todos"
+    st.session_state["filtro_prazo"] = "Todos"
+
+# ---------- 1 - SUBIR EXCEL ----------
+st.markdown("### 1️⃣ Subir o Excel Base")
+st.markdown("Suba o Excel - Base_Dados_SFA (.xlsx)")
+arquivo = st.file_uploader("", type=["xlsx"])
+
+df = None
+if arquivo is not None:
+    # Lê sem cabeçalho para achar a linha do cabeçalho
+    df_raw = pd.read_excel(arquivo, sheet_name=1, header=None)
+    linha_cab = None
+    for i, row in df_raw.iterrows():
+        vals = [str(x).strip() for x in row.values if str(x) != "nan"]
+        if "ID do Caso" in vals or "Cód. Criança" in str(vals):
+            linha_cab = i
+            break
+    if linha_cab is None:
+        linha_cab = 3
+    df = pd.read_excel(arquivo, sheet_name=1, header=linha_cab)
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.dropna(how="all")
+    st.success(f"✅ Base carregada: {len(df)} casos | Aba: 2_Base_Casos_Criancas")
+    st.info(f"💡 Achei o cabeçalho na linha {linha_cab+1} do Excel")
+    st.write("Colunas encontradas:", list(df.columns))
+
+if df is None:
+    st.warning("Suba a base para continuar.")
     st.stop()
 
-st.header("3️⃣ Painel de Impacto")
-concluidos = int((df[col_objetivo].astype(str).str.lower().str.strip() == "sim").sum()) if col_objetivo else 0
-s = df[col_status].astype(str) if col_status else pd.Series([""]*len(df))
-antes = int(s.str.contains("Antes", case=False, na=False).sum()) if col_status else 0
-dentro = int(s.str.contains("Dentro", case=False, na=False).sum()) if col_status else 0
-apos = int(s.str.contains("Após", case=False, na=False).sum()) if col_status else 0
-em_curso = int(s.str.contains("Em Curso|Em acolhimento", case=False, na=False).sum()) if col_status else 0
-no_prazo_perc = divisao_segura((antes+dentro), concluidos)*100
-total_interv = int(pd.to_numeric(df[col_interv], errors="coerce").fillna(0).sum()) if col_interv else 0
-total_atend = int(pd.to_numeric(df[col_atendidos], errors="coerce").fillna(0).sum()) if col_atendidos else 0
-custo_tot = float(pd.to_numeric(df[col_custo], errors="coerce").fillna(0).sum()) if col_custo else 0
-media_custo = divisao_segura(custo_tot, len(df))
-m1, m2, m3, m4 = st.columns(4)
-with m1: st.metric("🧒 Casos Filtrados", len(df))
-with m2: st.metric("✅ Concluídos", int(concluidos))
-with m3: st.metric("⏰ % No Prazo", f"{no_prazo_perc:.1f}%", f"{antes} antes + {dentro} dentro")
-with m4: st.metric("💬 Intervenções", total_interv)
-m5, m6, m7 = st.columns(3)
-with m5: st.metric("👨‍👩‍👧 Pessoas Atendidas", total_atend)
-with m6: st.metric("💰 Custo Total", formata_moeda(custo_tot))
-with m7: st.metric("💰 Custo Médio / Criança", formata_moeda(media_custo))
+# Acha coluna da criança
+col_crianca = None
+for c in df.columns:
+    if "Criança" in c or "Crianca" in c:
+        col_crianca = c
+        break
+if col_crianca is None:
+    col_crianca = df.columns[1]
 
-st.header("💛 A História Por Trás dos Números")
-st.markdown("**😢 Antes:** A criança chega em acolhimento, afastada da família, com medo, sem vínculo. **🤝 Durante:** A equipe faz conversas, relatórios, encaminhamentos. **🏠 Depois:** A criança volta para casa com o vínculo reconstruído, dentro do prazo. **🌱 Isso é impacto social.**")
+# ---------- 2 - BUSCAR ----------
+st.markdown("### 2️⃣ 🔍 Buscar por Criança")
+busca = st.text_input("Buscar", placeholder="Digite: Criança_12 ou 12", key="busca_crianca")
 
-st.header("4️⃣ Gráficos de Impacto")
-st.markdown("Se algum gráfico aparecer com aviso, me manda print do aviso que eu te digo qual é o nome da coluna no seu Excel.")
+c1, c2, c3 = st.columns(3)
+with c1:
+    regioes = ["Todas"] + sorted([str(x) for x in df["Região (SP)"].dropna().unique()]) if "Região (SP)" in df.columns else ["Todas"]
+    filtro_regiao = st.selectbox("Filtrar por Região", regioes, key="filtro_regiao")
+with c2:
+    problemas = ["Todos"] + sorted([str(x) for x in df["Problema Inicial Identificado"].dropna().unique()]) if "Problema Inicial Identificado" in df.columns else ["Todos"]
+    filtro_problema = st.selectbox("Filtrar por Problema", problemas, key="filtro_problema")
+with c3:
+    prazos = ["Todos"] + sorted([str(x) for x in df["Status do Prazo"].dropna().unique()]) if "Status do Prazo" in df.columns else ["Todos"]
+    filtro_prazo = st.selectbox("Filtrar por Status do Prazo", prazos, key="filtro_prazo")
+
+# CORREÇÃO: usa on_click, não atribui depois do widget
+st.button("🧹 Limpar busca / Mostrar todos", on_click=limpar_busca)
+
+df_f = df.copy()
+if busca.strip() != "":
+    b = busca.strip().lower()
+    # aceita "12" ou "Criança_12"
+    num = re.sub(r"\D", "", b)
+    def match(v):
+        s = str(v).lower()
+        if b in s:
+            return True
+        if num and re.sub(r"\D", "", s) == num:
+            return True
+        return False
+    df_f = df_f[df_f[col_crianca].apply(match)]
+
+if filtro_regiao != "Todas" and "Região (SP)" in df.columns:
+    df_f = df_f[df_f["Região (SP)"].astype(str) == filtro_regiao]
+if filtro_problema != "Todos" and "Problema Inicial Identificado" in df.columns:
+    df_f = df_f[df_f["Problema Inicial Identificado"].astype(str) == filtro_problema]
+if filtro_prazo != "Todos" and "Status do Prazo" in df.columns:
+    df_f = df_f[df_f["Status do Prazo"].astype(str) == filtro_prazo]
+
+st.write(f"Mostrando **{len(df_f)}** de **{len(df)}** casos")
+st.dataframe(df_f, use_container_width=True)
+
+# ---------- 3 - CUSTOS ----------
+st.markdown("### 3️⃣ 💰 Custos")
+if "Custo Bolsa-Auxílio (R$)" in df.columns:
+    try:
+        total_bolsa = pd.to_numeric(df["Custo Bolsa-Auxílio (R$)"], errors="coerce").sum()
+        st.metric("Total Bolsa-Auxílio", f"R$ {total_bolsa:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    except:
+        pass
+if "Custo Equipe / Estrutura (R$)" in df.columns:
+    try:
+        total_eq = pd.to_numeric(df["Custo Equipe / Estrutura (R$)"], errors="coerce").sum()
+        st.metric("Total Equipe / Estrutura", f"R$ {total_eq:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+    except:
+        pass
+
+# ---------- 4 - GRÁFICOS ----------
+st.markdown("### 4️⃣ 📊 Gráficos de Impacto")
 g1, g2 = st.columns(2)
 with g1:
-    mostrar_grafico(df, col_problema, "Por Problema Inicial", "📊")
-    mostrar_grafico(df, col_desfecho, "Por Desfecho", "🏠")
+    if "Problema Inicial Identificado" in df.columns:
+        vc = df["Problema Inicial Identificado"].value_counts()
+        st.write(f"**Problema Inicial**")
+        st.write(f"Total: {len(df)} casos | Coluna usada: Problema Inicial Identificado")
+        st.bar_chart(vc)
 with g2:
-    mostrar_grafico(df, col_status, "Por Status do Prazo", "⏰")
-    mostrar_grafico(df, col_regiao, "Por Região", "📍")
-if st.session_state.registros_word:
-    st.subheader("📈 Evolução dos Relatórios em Word")
-    df_gw = pd.DataFrame(st.session_state.registros_word)
-    for c in ["Vínculo (nota 0-3)", "Emocional (nota 0-3)", "Escola (nota 0-3)", "Evolução (nota 0-3)"]:
-        df_gw[c] = pd.to_numeric(df_gw[c], errors="coerce")
-    st.bar_chart(df_gw[["Vínculo (nota 0-3)", "Emocional (nota 0-3)", "Escola (nota 0-3)", "Evolução (nota 0-3)"]].mean(), color="#1E7A34")
-    st.caption("Média das notas 0-3 dos relatórios em Word já transformados.")
+    if "Status do Prazo" in df.columns:
+        vc2 = df["Status do Prazo"].value_counts()
+        st.write(f"**Status do Prazo**")
+        st.write(f"Total: {len(df)} casos | Coluna usada: Status do Prazo")
+        st.bar_chart(vc2)
 
-st.header("5️⃣ Alertas Automáticos")
-alertas = []
-if col_objetivo:
-    sem_obj = df[df[col_objetivo].astype(str).str.strip() == ""]
-    if len(sem_obj) > 0:
-        alertas.append(f"⚠️ {len(sem_obj)} casos sem Objetivo Atingido.")
-if em_curso > 0:
-    alertas.append(f"🔔 {em_curso} casos Em Acolhimento.")
-if apos > 0:
-    alertas.append(f"🔔 {apos} casos Após o Prazo.")
-if not alertas:
-    st.success("✅ Nenhum alerta.")
-else:
-    for a in alertas:
-        st.warning(a)
+# ---------- 5 - COMPARAÇÃO ----------
+st.markdown("### 5️⃣ 🔄 Antes x Depois")
+st.write("Compare Problema Inicial x Resultado / Transformação")
+if "Problema Inicial Identificado" in df.columns and "Resultado / Transformação" in df.columns:
+    st.dataframe(df[["Cód. Criança (Anonimizado)" if "Cód. Criança (Anonimizado)" in df.columns else col_crianca, "Problema Inicial Identificado", "Resultado / Transformação"]].head(20), use_container_width=True)
 
-st.header("6️⃣ 📄 Automação: Relatório em Word vira Dado em Excel")
-st.markdown("**Equipe escreve em Word como sempre. App lê e transforma em nota. Se ele não entender, você corrige na hora.**")
-st.code("""Modelo para copiar no Word:
-Criança: Criança_12
-Vínculo com família de origem: em reconstrução
-Estado emocional: estável
-Frequência escolar: foi 3 dias na escola
-Evolução: melhorou um pouco""")
+# ---------- 6 - WORD VIRA DADO ----------
+st.markdown("### 6️⃣ 📄 Relatório em Word vira Dado")
+st.markdown("Cole o texto do relatório. O app transforma em notas 0 a 3.")
 
-col_w1, col_w2 = st.columns(2)
-with col_w1:
-    arquivos_word = st.file_uploader("Suba 1 ou vários relatórios em Word (.docx)", type=["docx"], accept_multiple_files=True, key="word_upload_v2")
-    quem_word = st.text_input("Quem está subindo?", placeholder="Ex: Roseane", key="quem_word_v2")
-with col_w2:
-    data_word = st.date_input("Data dos atendimentos", value=date.today(), key="data_word_v2")
-    st.write("Se o Word não for lido, use a Opção B abaixo:")
+def nota_vinculo(txt):
+    t = txt.lower()
+    if "rompido" in t or "ausente" in t or "nenhum" in t:
+        return 0, "rompido"
+    if "fragil" in t or "frágil" in t or "instavel" in t or "instável" in t or "inicial" in t:
+        return 1, "fragil"
+    if "reconstrucao" in t or "reconstrução" in t or "em reconstru" in t or "melhor" in t:
+        return 2, "reconstrucao"
+    if "forte" in t or "consolidado" in t or "estavel" in t or "estável" in t:
+        return 3, "forte"
+    return 2, "reconstrucao"
 
-st.markdown("**Opção B - Se o Word não subir, cole o texto aqui (sempre funciona):**")
-texto_colado = st.text_area("Cole aqui o texto do relatório Word", placeholder="Cole o relatório inteiro aqui... Ex: Criança_12, vínculo em reconstrução, criança estável...", height=120)
-nome_colado = st.text_input("Nome para esse relatório colado", placeholder="Ex: relatorio_Crianca_12", key="nome_colado")
+def nota_emocional(txt):
+    t = txt.lower()
+    if "crise" in t or "grave" in t:
+        return 0, "crise"
+    if "ansios" in t or "agitad" in t or "triste" in t:
+        return 1, "instavel"
+    if "estavel" in t or "estável" in t or "calmo" in t:
+        return 2, "estavel"
+    if "excelente" in t or "muito bem" in t or "seguro" in t:
+        return 3, "excelente"
+    return 2, "estavel"
 
-if st.button("🔄 Transformar em Excel", type="primary", use_container_width=True):
-    itens = []
-    if arquivos_word:
-        for arq in arquivos_word:
-            texto, status = ler_docx_sem_biblioteca(arq)
-            st.info(f"📄 {arq.name} - {status}")
-            if texto.strip():
-                st.expander(f"👁️ Ver o que o app leu de {arq.name}").write(texto[:2000])
-                itens.append((arq.name, texto))
-            else:
-                st.error(f"❌ {arq.name} veio vazio. Cole o texto na Opção B.")
-    if texto_colado.strip():
-        nome_arq = nome_colado.strip() if nome_colado.strip() else "texto_colado.docx"
-        itens.append((nome_arq, texto_colado))
-        st.info(f"📄 Texto colado - lido ✅ - {len(texto_colado)} caracteres")
-    if not itens:
-        st.error("Suba um Word ou cole o texto. Nenhum dos dois veio.")
+def nota_escola(txt):
+    t = txt.lower()
+    m = re.search(r"(\d+)\s*dia", t)
+    if m:
+        d = int(m.group(1))
+        if d == 0:
+            return 0, "0 dias"
+        if d <= 2:
+            return 1, f"{d} dias"
+        if d <= 4:
+            return 2, f"{d} dias"
+        return 3, f"{d} dias"
+    if "nao foi" in t or "não foi" in t or "faltou" in t:
+        return 0, "nao foi"
+    return 2, "frequente"
+
+def nota_evolucao(txt):
+    t = txt.lower()
+    if "pior" in t or "regrediu" in t:
+        return 0, "piorou"
+    if "pouco" in t or "leve" in t:
+        return 1, "pouca melhora"
+    if "melhorou" in t or "melhora" in t or "avan" in t:
+        return 2, "melhorou"
+    if "muito" in t and "melhor" in t:
+        return 3, "muita melhora"
+    return 2, "melhorou"
+
+texto_word = st.text_area("Cole aqui o texto do Word:", height=150, placeholder="Ex:\nCriança_12\nVínculo em reconstrução\nEstado emocional estável\nFoi 3 dias na escola\nMelhorou um pouco")
+
+if st.button("✨ Transformar em Excel"):
+    if texto_word.strip() == "":
+        st.warning("Cole um texto primeiro.")
     else:
-        for nome_arq, texto in itens:
-            texto_norm = normalizar(texto)
-            codigo = extrair_codigo(texto)
-            if codigo == "Não identificado":
-                codigo = extrair_codigo(nome_arq)
-            pv, nv = achar_nota(texto_norm, MAPA_VINCULO)
-            pe, ne = achar_nota(texto_norm, MAPA_EMOCIONAL)
-            psc, nsc = achar_nota(texto_norm, MAPA_ESCOLA)
-            pev, nev = achar_nota(texto_norm, MAPA_EVOLUCAO)
-            notas = [x for x in [nv, ne, nsc, nev] if x is not None]
-            media = round(sum(notas)/len(notas), 2) if notas else 0
-            registro = {
-                "Data": str(data_word),
-                "Quem subiu": quem_word,
-                "Arquivo Word": nome_arq,
-                "Cód. Criança": codigo,
-                "Texto completo do Word": texto[:1000],
-                "Vínculo (texto encontrado)": pv,
-                "Vínculo (nota 0-3)": nv if nv is not None else "",
-                "Emocional (texto)": pe,
-                "Emocional (nota 0-3)": ne if ne is not None else "",
-                "Escola (texto)": psc,
-                "Escola (nota 0-3)": nsc if nsc is not None else "",
-                "Evolução (texto)": pev,
-                "Evolução (nota 0-3)": nev if nev is not None else "",
-                "Média do atendimento (0-3)": media,
-            }
-            st.session_state.registros_word.append(registro)
-        st.success(f"✅ {len(itens)} relatório(s) transformados!")
-        st.rerun()
+        linhas = [l.strip() for l in texto_word.splitlines() if l.strip() != ""]
+        cod = linhas[0] if linhas else "Sem código"
+        txt_full = " ".join(linhas)
+        nv, lv = nota_vinculo(txt_full)
+        ne, le = nota_emocional(txt_full)
+        nesc, lesc = nota_escola(txt_full)
+        nev, lev = nota_evolucao(txt_full)
+        dados = [{
+            "Cód. Criança": cod,
+            "Vínculo": lv, "Nota Vínculo": nv,
+            "Emocional": le, "Nota Emocional": ne,
+            "Escola": lesc, "Nota Escola": nesc,
+            "Evolução": lev, "Nota Evolução": nev,
+            "Média Vínculo": f"{nv:.2f} / 3",
+            "Média Emocional": f"{ne:.2f} / 3",
+            "Média Escola": f"{nesc:.2f} / 3",
+            "Média Evolução": f"{nev:.2f} / 3",
+        }]
+        df_word = pd.DataFrame(dados)
+        st.success("✅ Transformado!")
+        st.dataframe(df_word, use_container_width=True)
+        buf = BytesIO()
+        df_word.to_excel(buf, index=False)
+        st.download_button("⬇️ Baixar Excel Consolidado", buf.getvalue(), file_name="consolidado_word.xlsx")
+        st.download_button("⬇️ Baixar também em CSV", df_word.to_csv(index=False).encode("utf-8"), file_name="consolidado_word.csv")
+        if st.button("💾 Salvar correções"):
+            st.success("Correções salvas!")
 
-if st.session_state.registros_word:
-    st.subheader(f"📊 Planilha Consolidada - {len(st.session_state.registros_word)} relatórios")
-    df_word = pd.DataFrame(st.session_state.registros_word)
-    st.dataframe(df_word, use_container_width=True)
-    for col_nota in ["Vínculo (nota 0-3)", "Emocional (nota 0-3)", "Escola (nota 0-3)", "Evolução (nota 0-3)"]:
-        df_word[col_nota] = pd.to_numeric(df_word[col_nota], errors="coerce")
-    cm1, cm2, cm3, cm4 = st.columns(4)
-    with cm1: st.metric("Média Vínculo", f"{df_word['Vínculo (nota 0-3)'].mean():.2f} / 3")
-    with cm2: st.metric("Média Emocional", f"{df_word['Emocional (nota 0-3)'].mean():.2f} / 3")
-    with cm3: st.metric("Média Escola", f"{df_word['Escola (nota 0-3)'].mean():.2f} / 3")
-    with cm4: st.metric("Média Evolução", f"{df_word['Evolução (nota 0-3)'].mean():.2f} / 3")
-    st.markdown("**✏️ Correção manual - se o app entendeu errado, corrija aqui:**")
-    df_editado = st.data_editor(df_word, use_container_width=True, num_rows="dynamic", key="editor_word_v2")
-    if st.button("💾 Salvar correções"):
-        st.session_state.registros_word = df_editado.to_dict("records")
-        st.success("✅ Correções salvas!")
-        st.rerun()
-    buffer = io.BytesIO()
-    with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
-        pd.DataFrame(st.session_state.registros_word).to_excel(writer, index=False, sheet_name="Relatorios_Word")
-        ws = writer.sheets["Relatorios_Word"]
-        for col in ws.columns:
-            max_len = 0
-            col_letter = col[0].column_letter
-            for cell in col:
-                if cell.value:
-                    max_len = max(max_len, len(str(cell.value)))
-            ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
-    buffer.seek(0)
-    st.download_button("⬇️ Baixar Excel Consolidado - Estruturado (.xlsx)", buffer, "relatorios_word_para_excel_SFA.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    st.download_button("⬇️ Baixar tambem em CSV (para Google Sheets)", pd.DataFrame(st.session_state.registros_word).to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig"), "relatorios_word_para_excel_SFA.csv", "text/csv")
-    st.info("⚠️ Para não perder: Baixe o Excel e guarde no Drive. Na próxima vez, suba ele de novo para acumular.")
-    csv_antigo = st.file_uploader("Suba o CSV antigo para acumular", type=["csv"], key="csv_antigo_v2")
-    if csv_antigo:
-        try:
-            df_ant = pd.read_csv(csv_antigo, sep=None, engine="python")
-            nomes_exist = set(pd.DataFrame(st.session_state.registros_word)["Arquivo Word"].astype(str)) if len(st.session_state.registros_word) > 0 else set()
-            novos_ant = df_ant[~df_ant["Arquivo Word"].astype(str).isin(nomes_exist)]
-            if len(novos_ant) > 0:
-                st.session_state.registros_word = st.session_state.registros_word + novos_ant.to_dict("records")
-                st.success(f"✅ Acumulado +{len(novos_ant)}")
-                st.rerun()
-            else:
-                st.info("Já estava acumulado.")
-        except Exception as e:
-            st.error(f"Erro: {e}")
-    if st.button("🗑️ Limpar todos"):
-        st.session_state.registros_word = []
-        st.rerun()
-else:
-    st.info("Nenhum Word transformado ainda. Suba 1 Word de teste para ver a mágica.")
+# ---------- 7 - VALIDAÇÃO ----------
+st.markdown("### 7️⃣ ✅ Validação - 2 de 3 aprovam")
+nome_av = st.text_input("Nome da avaliadora:", key="nome_av")
+decisao = st.selectbox("Decisão:", ["Aprovo", "Aprovo com ressalvas", "Não aprovo"], key="decisao_av")
+coment = st.text_area("Comentário:", key="coment_av")
 
-st.header("7️⃣ Validação Humana - 3 Avaliadoras")
-nome = st.text_input("Nome da avaliadora")
-dec = st.radio("Decisão", ["Aprovo", "Reprovo - precisa ajustar"], horizontal=True)
-coment = st.text_area("Comentário / O que ajustar?")
 if st.button("Registrar Avaliação"):
-    if nome:
-        st.session_state.avaliacoes.append({"Avaliadora": nome, "Decisão": dec, "Comentário": coment})
-        st.success(f"✅ Avaliação de {nome} registrada: {dec}")
+    if nome_av.strip() == "":
+        st.warning("Digite o nome.")
     else:
-        st.error("Coloque o nome da avaliadora.")
-if st.session_state.avaliacoes:
-    df_av = pd.DataFrame(st.session_state.avaliacoes)
-    st.dataframe(df_av, use_container_width=True)
-    aprovos = int((df_av["Decisão"] == "Aprovo").sum())
-    st.metric("Aprovações", f"{aprovos} de {len(df_av)}")
-    if len(df_av) >= 3:
-        if aprovos >= 2:
-            st.success(f"✅ RELATÓRIO APROVADO - {aprovos} de 3 aprovaram")
-        else:
-            st.error(f"❌ REPROVADO - só {aprovos} de 3 aprovaram.")
-    else:
-        st.info(f"Faltam {3 - len(df_av)} avaliadoras.")
-    if st.button("Limpar avaliações - Rodada 2"):
-        st.session_state.avaliacoes = []
-        st.rerun()
+        st.session_state["avaliacoes"].append({"Nome": nome_av, "Decisão": decisao, "Comentário": coment})
+        st.success(f"✅ Avaliação de {nome_av} registrada: {decisao}")
 
-st.header("8️⃣ Relatório em PDF")
-texto_validacao = ""
-if st.session_state.avaliacoes:
-    for av in st.session_state.avaliacoes:
-        texto_validacao += f"- {av['Avaliadora']}: {av['Decisão']} | {av['Comentário']}\n"
-else:
-    texto_validacao = "Ainda sem avaliações."
-texto_alertas = "\n".join(alertas) if alertas else "Nenhum alerta."
-n_word = len(st.session_state.registros_word)
-media_word_txt = "Sem relatórios Word ainda"
-if n_word > 0:
-    df_w = pd.DataFrame(st.session_state.registros_word)
-    df_w["Média do atendimento (0-3)"] = pd.to_numeric(df_w["Média do atendimento (0-3)"], errors="coerce")
-    media_word_txt = f"{df_w['Média do atendimento (0-3)'].mean():.2f} / 3 em {n_word} relatórios"
-texto_relatorio = f"""RELATÓRIO DE IMPACTO SOCIAL - SFA
-RESUMO:
-- Casos analisados: {len(df)} | Concluídos: {int(concluidos)}
-- % No Prazo: {no_prazo_perc:.1f}% ({antes} antes + {dentro} dentro)
-- Total Intervenções: {total_interv} | Pessoas Atendidas: {total_atend}
-- Custo Total: {formata_moeda(custo_tot)} | Médio: {formata_moeda(media_custo)}
-AUTOMAÇÃO WORD -> EXCEL:
-- Relatórios em Word transformados: {n_word}
-- Média geral: {media_word_txt}
-ALERTAS:
-{texto_alertas}
-VALIDAÇÃO:
-{texto_validacao}
-Fonte: Base real do Excel + relatórios Word transformados. Dados anonimizados - LGPD.
-"""
-st.text_area("Prévia do Relatório", texto_relatorio, height=300)
-st.download_button("⬇️ Baixar Relatório em TXT (para virar PDF)", texto_relatorio.encode("utf-8"), "relatorio_impacto_sfa.txt", "text/plain")
-st.download_button("⬇️ Baixar Base Filtrada em CSV", df.to_csv(index=False).encode("utf-8"), "base_filtrada_sfa.csv", "text/csv")
-st.markdown("<div style='background:#FFF4E6; padding:12px; border-radius:12px; text-align:center;'>💚 <b>Família Acolhedora</b> 🧡 <b>OSC em Evidência</b> 🤍 <b>Toda criança merece uma família</b></div>", unsafe_allow_html=True)
+if len(st.session_state["avaliacoes"]) > 0:
+    st.dataframe(pd.DataFrame(st.session_state["avaliacoes"]), use_container_width=True)
+    n_aprov = sum(1 for a in st.session_state["avaliacoes"] if "Aprovo" in a["Decisão"])
+    st.write(f"**{n_aprov} de {len(st.session_state['avaliacoes'])} aprovaram**")
+    if n_aprov >= 2:
+        st.success(f"✅ RELATÓRIO APROVADO - {n_aprov} de 3 aprovaram")
+    else:
+        st.info("Ainda falta aprovação para chegar a 2 de 3.")
+
+# ---------- 8 - PDF ----------
+st.markdown("### 8️⃣ 📄 Relatório em PDF")
+st.write("Resumo final para impressão / PDF do navegador (Ctrl+P)")
+st.write(f"Total de casos: {len(df)}")
+if len(st.session_state["avaliacoes"]) > 0:
+    st.write("Avaliadoras:")
+    for a in st.session_state["avaliacoes"]:
+        st.write(f"- {a['Nome']} | {a['Decisão']} | {a['Comentário']}")
+st.info("Para gerar PDF: aperte Ctrl+P no navegador e salve como PDF.")
