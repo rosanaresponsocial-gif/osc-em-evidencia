@@ -1,5 +1,3 @@
-javascriptstreamlit
+streamlit
 pandas
-python-docx
 openpyxl
-
