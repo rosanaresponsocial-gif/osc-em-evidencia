@@ -12,7 +12,7 @@ ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_COMPLEMENTAR = "dados_complementares.csv"
 ADMIN_LOGIN = "sfaevidencia"
 
-# --- FUNÇÕES SEGURANÇA ---
+# --- FUNCOES ---
 def criptografar(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
@@ -27,9 +27,8 @@ def salvar_usuarios(df):
     df.to_csv(ARQUIVO_USUARIOS, index=False)
 
 def carregar_base():
-    # Ninguém vê a planilha, só o app lê
     if not os.path.exists(ARQUIVO_BASE):
-        st.error("Base não encontrada. Fale com a administradora.")
+        st.error("Base nao encontrada. Fale com a administradora.")
         st.stop()
     return pd.read_excel(ARQUIVO_BASE, dtype=str).fillna("")
 
@@ -38,7 +37,7 @@ def carregar_complementar():
         return pd.DataFrame(columns=["codigo", "preenchido_por", "observacao", "data_avaliacao"])
     return pd.read_csv(ARQUIVO_COMPLEMENTAR, dtype=str).fillna("")
 
-# --- SESSÃO ---
+# --- SESSAO ---
 if "logado" not in st.session_state:
     st.session_state.logado = False
     st.session_state.login = ""
@@ -46,11 +45,10 @@ if "logado" not in st.session_state:
 
 # --- TELA DE LOGIN / CADASTRO ---
 if not st.session_state.logado:
-    st.title("🔒 SFA - Acesso Restrito")
+    st.title("SFA - Acesso Restrito")
     st.write("Somente pessoas aprovadas pela administradora.")
-
     aba = st.tabs(["Entrar", "Cadastrar"])
-    
+
     with aba[0]:
         login = st.text_input("Login", key="login_entrar")
         senha = st.text_input("Senha", type="password", key="senha_entrar")
@@ -58,11 +56,11 @@ if not st.session_state.logado:
             usuarios = carregar_usuarios()
             user = usuarios[usuarios["login"] == login]
             if user.empty:
-                st.error("Login não encontrado.")
+                st.error("Login nao encontrado.")
             elif user.iloc[0]["senha_hash"] != criptografar(senha):
                 st.error("Senha errada.")
             elif user.iloc[0]["status"] != "aprovado" and login != ADMIN_LOGIN:
-    st.warning("Seu cadastro está aguardando aprovação da Roseane.")
+                st.warning("Seu cadastro esta aguardando aprovacao da administradora.")
             else:
                 st.session_state.logado = True
                 st.session_state.login = login
@@ -71,29 +69,34 @@ if not st.session_state.logado:
 
     with aba[1]:
         nome_novo = st.text_input("Seu nome completo")
-        login_novo = st.text_input("Crie um login (sem espaço)", key="login_novo")
+        login_novo = st.text_input("Crie um login (sem espaco)", key="login_novo")
         senha_nova = st.text_input("Crie uma senha", type="password", key="senha_nova")
-        if st.button("Enviar cadastro para aprovação", use_container_width=True):
+        if st.button("Enviar cadastro para aprovacao", use_container_width=True):
             if not nome_novo or not login_novo or not senha_nova:
                 st.error("Preencha tudo.")
             else:
                 usuarios = carregar_usuarios()
                 if login_novo in usuarios["login"].values:
-                    st.error("Esse login já existe. Escolha outro.")
+                    st.error("Esse login ja existe. Escolha outro.")
                 else:
+                    status_novo = "aprovado" if login_novo == ADMIN_LOGIN else "pendente"
                     novo = pd.DataFrame([{
                         "nome": nome_novo,
                         "login": login_novo,
                         "senha_hash": criptografar(senha_nova),
-                        "status": "pendente"
+                        "status": status_novo
                     }])
                     usuarios = pd.concat([usuarios, novo], ignore_index=True)
                     salvar_usuarios(usuarios)
-                    st.success("Cadastro enviado! Aguarde a Roseane aprovar.")
+                    if status_novo == "aprovado":
+                        st.success("Cadastro de administradora criado! Agora va para Entrar.")
+                    else:
+                        st.success("Cadastro enviado! Aguarde aprovacao.")
+
     st.stop()
 
 # --- LOGADO ---
-st.sidebar.write(f"Olá, **{st.session_state.nome}**")
+st.sidebar.write(f"Ola, {st.session_state.nome}")
 st.sidebar.write(f"Login: {st.session_state.login}")
 if st.button("Sair", key="sair"):
     st.session_state.logado = False
@@ -101,47 +104,39 @@ if st.button("Sair", key="sair"):
 
 eh_admin = (st.session_state.login == ADMIN_LOGIN)
 
-# --- ABA ADMIN: APROVAR ---
+# --- PAINEL ADMIN ---
 if eh_admin:
-    st.title("👑 Painel da Administradora")
+    st.title("Painel da Administradora")
     usuarios = carregar_usuarios()
     pendentes = usuarios[usuarios["status"] == "pendente"]
-    
-    st.subheader(f"Aguardando aprovação: {len(pendentes)}")
+    st.subheader(f"Aguardando aprovacao: {len(pendentes)}")
     for idx, row in pendentes.iterrows():
         col1, col2, col3 = st.columns([2, 1, 1])
-        col1.write(f"**{row['nome']}** - login: `{row['login']}`")
-        if col2.button("✅ Aprovar", key=f"ap_{idx}"):
+        col1.write(f"{row['nome']} - login: {row['login']}")
+        if col2.button("Aprovar", key=f"ap_{idx}"):
             usuarios.loc[idx, "status"] = "aprovado"
             salvar_usuarios(usuarios)
             st.rerun()
-        if col3.button("❌ Negar", key=f"ne_{idx}"):
+        if col3.button("Negar", key=f"ne_{idx}"):
             usuarios.loc[idx, "status"] = "negado"
             salvar_usuarios(usuarios)
             st.rerun()
     st.divider()
 
 # --- APP PRINCIPAL ---
-st.title("Avaliação - Só Código")
+st.title("Avaliacao - So Codigo")
 df_base = carregar_base()
 df_comp = carregar_complementar()
-
-# Mostra só colunas de código, nunca nome
-# Ajuste aqui o nome da coluna de código na sua planilha
-col_codigo = df_base.columns[0]  # primeira coluna = código
-st.write(f"Total de crianças na base: **{len(df_base)}**")
-
-# Filtro por código
-codigo_escolhido = st.selectbox("Escolha o código:", [""] + sorted(df_base[col_codigo].unique().tolist()))
+col_codigo = df_base.columns[0]
+st.write(f"Total de criancas na base: {len(df_base)}")
+codigo_escolhido = st.selectbox("Escolha o codigo:", [""] + sorted(df_base[col_codigo].unique().tolist()))
 
 if codigo_escolhido:
-    dados_crianca = df_base[df_base[col_codigo] == codigo_escolhido].iloc[0]
-    st.info(f"Você está avaliando: **{codigo_escolhido}**")
-    
+    st.info(f"Voce esta avaliando: {codigo_escolhido}")
     with st.form("form_comp"):
-        obs = st.text_area("Observação / Dados complementares")
-        data_av = st.date_input("Data da avaliação")
-        enviar = st.form_submit_button("Salvar avaliação")
+        obs = st.text_area("Observacao / Dados complementares")
+        data_av = st.date_input("Data da avaliacao")
+        enviar = st.form_submit_button("Salvar avaliacao")
         if enviar:
             novo = pd.DataFrame([{
                 "codigo": codigo_escolhido,
@@ -153,8 +148,7 @@ if codigo_escolhido:
             df_comp.to_csv(ARQUIVO_COMPLEMENTAR, index=False)
             st.success("Salvo com sucesso!")
 
-    # --- GERAR PDF SÓ COM CÓDIGO ---
-    if st.button("⬇️ Baixar PDF - Só Código"):
+    if st.button("Baixar PDF - So Codigo"):
         pdf = FPDF()
         pdf.add_page()
         pdf.set_font("Arial", "B", 16)
@@ -162,11 +156,9 @@ if codigo_escolhido:
         pdf.set_font("Arial", "", 12)
         pdf.cell(0, 10, f"Codigo: {codigo_escolhido}", ln=True)
         pdf.cell(0, 10, f"Preenchido por: {st.session_state.login}", ln=True)
-        # Pega os complementares desse código
         comp_esse = df_comp[df_comp["codigo"] == codigo_escolhido]
         for _, r in comp_esse.iterrows():
             pdf.multi_cell(0, 10, f"- {r['data_avaliacao']}: {r['observacao']}")
-        
         pdf_bytes = pdf.output()
         st.download_button(
             label="Baixar PDF agora",
