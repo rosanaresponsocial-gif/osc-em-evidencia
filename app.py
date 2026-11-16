@@ -14,7 +14,6 @@ SENHA_CORRETA = "Sfa2026"
 
 st.set_page_config(page_title="SFA - OSC em Evidencia", page_icon="🧒", layout="centered")
 
-# --- INTERFACE BONITA - VERDE + LARANJA ---
 st.markdown("""
 <style>
 .stApp { background: linear-gradient(180deg, #FFF8E7 0%, #E8F5E9 100%); }
@@ -49,6 +48,22 @@ if not st.session_state.logado:
             st.error("Usuario ou senha incorretos.")
     st.stop()
 
+def achar_coluna_codigo(df):
+    # 1 - Procura coluna que tem SFA no valor
+    for col in df.columns:
+        vals = df[col].astype(str).str.strip().tolist()
+        if any("SFA" in v for v in vals):
+            return col
+    # 2 - Procura pelo nome
+    for col in df.columns:
+        nome = col.lower()
+        if "id" in nome and "caso" in nome:
+            return col
+        if "codigo" in nome or "código" in nome:
+            return col
+    # 3 - Se nao achou, usa a primeira coluna que nao seja numero puro
+    return df.columns[0]
+
 def carregar_base():
     if not os.path.exists(ARQUIVO_BASE):
         st.error("Base nao encontrada.")
@@ -58,12 +73,12 @@ def carregar_base():
     except Exception:
         df = pd.read_excel(ARQUIVO_BASE, dtype=str, header=3).fillna("")
     df.columns = [str(c).strip() for c in df.columns]
-    if "ID do Caso" in df.columns:
-        df = df.rename(columns={"ID do Caso": "Codigo"})
-    df = df[df["Codigo"].astype(str).str.strip() != ""]
-    df = df[df["Codigo"].astype(str).str.strip().str.lower() != "nan"]
-    # Garante que Codigo fica texto completo, ex: SFA-SP-202542
+    col_codigo = achar_coluna_codigo(df)
+    if col_codigo != "Codigo":
+        df = df.rename(columns={col_codigo: "Codigo"})
     df["Codigo"] = df["Codigo"].astype(str).str.strip()
+    df = df[df["Codigo"] != ""]
+    df = df[df["Codigo"].str.lower() != "nan"]
     return df
 
 df_base = carregar_base()
@@ -146,7 +161,8 @@ with aba2:
         st.subheader("📊 Grafico desse relatorio")
         df_graf_word = pd.DataFrame({"Tipo": ["Visitas", "Contatos", "Articulacoes", "Consultas Saude", "Atendimentos"], "Quantidade": [visitas, contatos, articulacoes, consultas, atendimentos]})
         st.bar_chart(df_graf_word.set_index("Tipo"))
-        novo_codigo = st.text_input("ID do Caso / Codigo da crianca desse relatorio", value="")
+        novo_codigo = st.text_input("ID do Caso / Codigo da crianca desse relatorio - ex: SFA-SP-202542", value="")
+        st.caption("⚠️ Digite o codigo completo com SFA, nao so o numero 1, 2, 3. Ex: SFA-SP-202542")
         if st.button("Adicionar e gerar Excel novo ✨"):
             if novo_codigo.strip() == "":
                 st.error("Preencha o ID do Caso, ex: SFA-SP-202542")
@@ -182,7 +198,6 @@ with aba3:
             df_base[c] = "0"
         df_base[c] = pd.to_numeric(df_base[c], errors="coerce").fillna(0).astype(int)
     df_com_dados = df_base[df_base["Total Registros"] > 0].copy()
-    # Garante codigo como texto
     df_com_dados["Codigo"] = df_com_dados["Codigo"].astype(str).str.strip()
     if len(df_com_dados) == 0:
         st.info("Ainda nao tem nenhum caso com dados do Word. Suba um Word na aba 2, digite o Codigo e clique em Adicionar. Depois volte aqui. 💚")
@@ -213,64 +228,54 @@ with aba3:
         def gerar_pdf():
             buf = io.BytesIO()
             with PdfPages(buf) as pdf:
-                # PAGINA 1 - CAPA CORRIGIDA - sem quebrar "Total"
+                # PAGINA 1 - SEM tight_layout, SEM fig.text - usa ax com coordenadas fixas
                 fig = plt.figure(figsize=(8.5, 11))
                 fig.patch.set_facecolor("#FFF8E7")
-                # Faixa verde no topo
-                fig.patches.extend([plt.Rectangle((0, 0.88), 1, 0.12, fill=True, color="#2E7D32", transform=fig.transFigure, figure=fig)])
-                fig.text(0.5, 0.96, "OSC em Evidencia - SFA", ha="center", va="center", fontsize=22, weight="bold", color="white")
-                fig.text(0.5, 0.91, "Relatorio Alegre - Criancas, Adolescentes e Familias", ha="center", va="center", fontsize=11, color="white")
-                fig.text(0.5, 0.82, "Familias diversas, infancias felizes!", ha="center", va="center", fontsize=13, color="#2E7D32", weight="bold")
-                fig.text(0.5, 0.78, "Cada crianca importa! Cada familia importa!", ha="center", va="center", fontsize=11, color="#E65100")
-                # Caixa de resumo - linhas separadas, sem quebrar
-                y = 0.68
-                fig.text(0.15, y, f"Casos com relatorio: {len(df_com_dados)}", ha="left", va="center", fontsize=13, color="#222222")
-                y -= 0.06
-                fig.text(0.15, y, f"Total de Visitas: {int(df_com_dados['Total Visitas'].sum())}", ha="left", va="center", fontsize=13, color="#222222")
-                y -= 0.06
-                fig.text(0.15, y, f"Total de Contatos: {int(df_com_dados['Total Contatos'].sum())}", ha="left", va="center", fontsize=13, color="#222222")
-                y -= 0.06
-                fig.text(0.15, y, f"Total de Articulacoes: {int(df_com_dados['Total Articulacoes'].sum())}", ha="left", va="center", fontsize=13, color="#222222")
-                y -= 0.06
-                fig.text(0.15, y, f"Total de Consultas Saude: {int(df_com_dados['Total Consultas Saude'].sum())}", ha="left", va="center", fontsize=13, color="#222222")
-                y -= 0.06
-                fig.text(0.15, y, f"Total de Atendimentos: {int(df_com_dados['Total Atendimentos'].sum())}", ha="left", va="center", fontsize=13, color="#222222")
-                y -= 0.08
-                fig.text(0.5, y, "Feito com amor, verde e laranja!", ha="center", va="center", fontsize=12, color="#FF8C00", style="italic", weight="bold")
-                # Lista de codigos na capa
-                y -= 0.08
-                fig.text(0.15, y, "Codigos incluidos neste relatorio:", ha="left", va="center", fontsize=11, color="#2E7D32", weight="bold")
-                y -= 0.05
+                ax = fig.add_axes([0, 0, 1, 1])
+                ax.set_xlim(0, 10)
+                ax.set_ylim(0, 11)
+                ax.axis("off")
+                # Faixa verde
+                ax.add_patch(plt.Rectangle((0, 9.8), 10, 1.2, facecolor="#2E7D32", edgecolor="none"))
+                ax.text(5, 10.6, "OSC em Evidencia - SFA", ha="center", va="center", fontsize=20, weight="bold", color="white")
+                ax.text(5, 10.1, "Relatorio Alegre - Criancas, Adolescentes e Familias", ha="center", va="center", fontsize=11, color="white")
+                ax.text(5, 9.3, "Familias diversas, infancias felizes!", ha="center", va="center", fontsize=13, color="#2E7D32", weight="bold")
+                ax.text(5, 8.9, "Cada crianca importa! Cada familia importa!", ha="center", va="center", fontsize=11, color="#E65100")
+                # Linhas do resumo - cada uma em uma linha separada, com x fixo
+                ax.text(1.0, 8.0, "Casos com relatorio: " + str(len(df_com_dados)), ha="left", va="center", fontsize=13, color="#222222")
+                ax.text(1.0, 7.5, "Total de Visitas: " + str(int(df_com_dados["Total Visitas"].sum())), ha="left", va="center", fontsize=13, color="#222222")
+                ax.text(1.0, 7.0, "Total de Contatos: " + str(int(df_com_dados["Total Contatos"].sum())), ha="left", va="center", fontsize=13, color="#222222")
+                ax.text(1.0, 6.5, "Total de Articulacoes: " + str(int(df_com_dados["Total Articulacoes"].sum())), ha="left", va="center", fontsize=13, color="#222222")
+                ax.text(1.0, 6.0, "Total de Consultas Saude: " + str(int(df_com_dados["Total Consultas Saude"].sum())), ha="left", va="center", fontsize=13, color="#222222")
+                ax.text(1.0, 5.5, "Total de Atendimentos: " + str(int(df_com_dados["Total Atendimentos"].sum())), ha="left", va="center", fontsize=13, color="#222222")
+                ax.text(5, 4.7, "Feito com amor, verde e laranja!", ha="center", va="center", fontsize=12, color="#FF8C00", style="italic", weight="bold")
+                ax.text(1.0, 4.0, "Codigos incluidos neste relatorio:", ha="left", va="center", fontsize=11, color="#2E7D32", weight="bold")
+                y = 3.5
                 for cod in df_com_dados["Codigo"].tolist():
-                    fig.text(0.18, y, f"- {cod}", ha="left", va="center", fontsize=11, color="#333333")
-                    y -= 0.04
-                    if y < 0.10:
+                    ax.text(1.3, y, "- " + str(cod), ha="left", va="center", fontsize=11, color="#333333")
+                    y -= 0.45
+                    if y < 0.5:
                         break
-                plt.tight_layout()
                 pdf.savefig(fig)
                 plt.close(fig)
 
-                # PAGINA 2 - GRAFICO DEITADO - sem amontoar
+                # PAGINA 2 - GRAFICO DEITADO
                 fig2, ax2 = plt.subplots(figsize=(8.5, 5))
                 fig2.patch.set_facecolor("white")
-                # Inverte para o maior ficar em cima
                 df_plot = df_total.sort_values("Quantidade", ascending=True)
                 cores = ["#2E7D32", "#66BB6A", "#FF8C00", "#FFB74D", "#E65100"]
-                # Pega cores na ordem do df_plot
-                cores_plot = cores[:len(df_plot)]
-                ax2.barh(df_plot["Tipo"], df_plot["Quantidade"], color=cores_plot, height=0.55)
+                ax2.barh(df_plot["Tipo"], df_plot["Quantidade"], color=cores[:len(df_plot)], height=0.55)
                 ax2.set_title("Total de Acoes Realizadas", color="#2E7D32", weight="bold", fontsize=14, pad=15)
                 ax2.set_xlabel("Quantidade", fontsize=11)
                 ax2.set_ylabel("")
                 ax2.grid(axis="x", linestyle="--", alpha=0.4)
                 for i, v in enumerate(df_plot["Quantidade"]):
                     ax2.text(int(v) + 0.2, i, str(int(v)), va="center", ha="left", weight="bold", color="#2E7D32", fontsize=12)
-                ax2.set_xlim(0, max(df_plot["Quantidade"].max() + 2, 5))
-                plt.tight_layout()
+                ax2.set_xlim(0, max(int(df_plot["Quantidade"].max()) + 2, 5))
                 pdf.savefig(fig2)
                 plt.close(fig2)
 
-                # PAGINA 3 - TABELA CORRIGIDA - codigo completo, numero sem .0
+                # PAGINA 3 - TABELA COM CODIGO LARGO
                 fig3, ax3 = plt.subplots(figsize=(8.5, 6))
                 ax3.axis("off")
                 ax3.set_title("Resumo por Crianca", color="#2E7D32", weight="bold", fontsize=14, pad=20)
@@ -285,15 +290,13 @@ with aba3:
                         str(int(row["Total Atendimentos"])),
                     ])
                 col_labels = ["Codigo", "Visitas", "Contatos", "Articul.", "Consultas", "Atendim."]
-                tabela = ax3.table(cellText=dados_tabela, colLabels=col_labels, loc="center", cellLoc="center")
+                tabela = ax3.table(cellText=dados_tabela, colLabels=col_labels, loc="center", cellLoc="center", colWidths=[0.35, 0.13, 0.13, 0.13, 0.13, 0.13])
                 tabela.auto_set_font_size(False)
                 tabela.set_fontsize(9)
                 tabela.scale(1, 1.8)
-                # Pinta cabecalho de verde
                 for j in range(len(col_labels)):
                     tabela[0, j].set_facecolor("#2E7D32")
                     tabela[0, j].set_text_props(color="white", weight="bold")
-                plt.tight_layout()
                 pdf.savefig(fig3)
                 plt.close(fig3)
             buf.seek(0)
