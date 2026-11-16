@@ -2,7 +2,22 @@ import streamlit as st
 import pandas as pd
 
 st.set_page_config(page_title="SFA - Relatório de Impacto", layout="wide")
+
+# --- ESTILO BONITO - CARA DE PROJETO PROFISSIONAL ---
+st.markdown("""
+<style>
+    .main { background-color: #FFF8F0; }
+    h1 { color: #6B3A2A; font-size: 32px; }
+    h2 { color: #8B5A2B; border-left: 5px solid #E8A87C; padding-left: 10px; }
+    .stMetric { background-color: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .stButton > button { border-radius: 10px; font-weight: bold; }
+</style>
+""", unsafe_allow_html=True)
+
 st.title("🏠 SFA - Relatório de Impacto Social")
+st.markdown("### OSC em Evidência | Serviço de Acolhimento em Família Acolhedora")
+st.markdown("> **Cada número aqui é uma criança que voltou para casa. Nenhum número foi inventado.**")
+st.markdown("---")
 st.write("Suba o Excel. Busque, filtre, veja gráficos, receba alertas, valide e baixe o relatório.")
 
 # --- FUNÇÃO SEGURA - NUNCA DIVIDE POR ZERO ---
@@ -80,7 +95,6 @@ with col_busca1:
 with col_busca2:
     buscar_btn = st.button("🔍 BUSCAR", type="primary", use_container_width=True)
 
-# --- FILTROS ---
 st.subheader("Filtros")
 c2, c3, c4 = st.columns(3)
 with c2:
@@ -97,10 +111,7 @@ if st.button("🧹 Limpar busca / Mostrar todos"):
     st.session_state["busca_crianca"] = ""
     st.rerun()
 
-# --- APLICA BUSCA + FILTROS ---
 df = df_total.copy()
-
-# BUSCA - procura em TODAS as colunas, não só no código
 if busca:
     busca_limpa = str(busca).strip().lower()
     mask = pd.Series([False] * len(df))
@@ -157,6 +168,29 @@ m5, m6, m7 = st.columns(3)
 with m5: st.metric("Pessoas Atendidas", total_atend)
 with m6: st.metric("Custo Total", formata_moeda(custo_tot))
 with m7: st.metric("Custo Médio / Criança", formata_moeda(media_custo))
+
+# --- HISTÓRIA POR TRÁS DOS NÚMEROS ---
+st.header("💛 A História Por Trás dos Números")
+st.markdown("""
+**Antes:** A criança chega em acolhimento, afastada da família, com medo, sem vínculo.
+
+**Durante:** A equipe faz conversas com a família de origem, com a família acolhedora, com a Vara, relatórios, encaminhamentos de saúde.
+
+**Depois:** A criança volta para casa - para a família de origem, extensa, ou substituta - com o vínculo reconstruído, dentro do prazo.
+""")
+
+if col_objetivo:
+    caso_sucesso = df[(df[col_objetivo].astype(str).str.lower().str.strip() == "sim")]
+    if len(caso_sucesso) > 0:
+        exemplo = caso_sucesso.iloc[0]
+        codigo_ex = exemplo[col_codigo] if col_codigo else "Caso"
+        prob_ex = exemplo[col_problema] if col_problema else ""
+        desf_ex = exemplo[col_desfecho] if col_desfecho else ""
+        status_ex = exemplo[col_status] if col_status else ""
+        st.success(f"**Exemplo real da sua base:** {codigo_ex} | Problema: {prob_ex} | Desfecho: {desf_ex} | Status: {status_ex}")
+        st.caption("Use esse caso no vídeo de 4 minutos. É a prova de que o serviço funciona.")
+    else:
+        st.info("Filtre por um caso concluído para ver aqui um exemplo de transformação real.")
 
 # --- 4. GRÁFICOS ---
 st.header("4️⃣ Gráficos de Impacto")
@@ -305,6 +339,11 @@ RESUMO:
 - Total de Intervenções: {total_interv}
 - Pessoas Atendidas: {total_atend}
 - Custo Total: {formata_moeda(custo_tot)} | Custo Médio por Criança: {formata_moeda(media_custo)}
+
+HISTÓRIA:
+Antes: A criança chega afastada da família.
+Durante: Equipe faz conversas, relatórios, encaminhamentos.
+Depois: A criança volta para casa com vínculo reconstruído.
 
 PERGUNTAS DO GUIA:
 1. Intervenções até objetivo: {total_interv} total, média {media_interv:.1f} por caso concluído
