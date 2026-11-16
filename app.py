@@ -1,5 +1,6 @@
 import os
 import io
+import textwrap
 import streamlit as st
 import pandas as pd
 from docx import Document
@@ -76,12 +77,16 @@ def carregar_base():
     df["Codigo"] = df["Codigo"].astype(str).str.strip()
     df = df[df["Codigo"] != ""]
     df = df[df["Codigo"].str.lower() != "nan"]
+    # CORRECAO 1: tira linha TOTAL / TOTAL GERAL - nao e crianca
+    df = df[~df["Codigo"].str.upper().isin(["TOTAL", "TOTAL GERAL", "TOTAIS"])]
+    df = df[~df["Codigo"].str.upper().str.startswith("TOTAL")]
     return df
 
 df_base = carregar_base()
 if len(st.session_state.novos_casos) > 0:
     df_base = pd.concat([df_base, pd.DataFrame(st.session_state.novos_casos)], ignore_index=True).fillna("")
     df_base["Codigo"] = df_base["Codigo"].astype(str).str.strip()
+    df_base = df_base[~df_base["Codigo"].str.upper().str.startswith("TOTAL")]
 
 st.markdown('<div class="topo"><h1>🧒👧🏽 OSC em Evidencia - SFA 👦🏻👧🏾</h1><p>👨‍👩‍👧‍👦 👩‍👧🏽 👨‍👧🏻 👩‍👩‍👧‍👦 👨‍👨‍👧 Famílias diversas • Crianças • Adolescentes • Acolhimento 💚🧡</p><p>🌈 Cada criança importa! Cada família importa!</p></div>', unsafe_allow_html=True)
 st.markdown('<div class="card-alegre">👶🧒👧 <b>Bem-vinda!</b> Aqui a gente cuida com amor, alegria e respeito a diversidade. 💚🧡🌈</div>', unsafe_allow_html=True)
@@ -198,6 +203,7 @@ with aba3:
     df_com_dados["Codigo"] = df_com_dados["Codigo"].astype(str).str.strip()
     df_todas = df_base.copy()
     df_todas["Codigo"] = df_todas["Codigo"].astype(str).str.strip()
+    df_todas = df_todas[~df_todas["Codigo"].str.upper().str.startswith("TOTAL")]
 
     if len(df_com_dados) == 0:
         st.info("Ainda nao tem nenhum caso com dados do Word. Suba um Word na aba 2, digite o Codigo e clique em Adicionar. Depois volte aqui. 💚")
@@ -224,7 +230,6 @@ with aba3:
         st.dataframe(df_com_dados[["Codigo", "Total Registros", "Total Visitas", "Total Contatos", "Total Articulacoes", "Total Consultas Saude", "Total Atendimentos", "Primeiro Contato", "Ultimo Contato"]])
 
         st.subheader("5. 📄 Baixar Relatorio em PDF - So quem tem Word")
-        st.write("PDF resumido, so com as criancas que ja tem relatorio Word. 💚🧡")
         def gerar_pdf():
             buf = io.BytesIO()
             with PdfPages(buf) as pdf:
@@ -281,16 +286,15 @@ with aba3:
         pdf_bytes = gerar_pdf()
         st.download_button("📄 Baixar PDF - So quem tem Word 💚🧡", data=pdf_bytes, file_name="relatorio_SFA.pdf", mime="application/pdf")
 
-    # --- NOVO: PDF DE TODAS AS CRIANCAS ---
     st.divider()
     st.subheader("6. 👨‍👩‍👧‍👦 Baixar Relatorio em PDF - TODAS as Criancas")
-    st.markdown('<div class="card-alegre">🌈 <b>Relatório completo!</b> Uma página para cada criança, com todas as informações do Excel. Ideal para arquivar e enviar para a coordenação!</div>', unsafe_allow_html=True)
+    st.markdown('<div class="card-alegre">🌈 <b>Relatório completo!</b> Uma página para cada criança, com todas as informações do Excel.</div>', unsafe_allow_html=True)
     st.write(f"Total de crianças que vão para o PDF: **{len(df_todas)}**")
 
     def gerar_pdf_todas():
         buf = io.BytesIO()
         with PdfPages(buf) as pdf:
-            # CAPA
+            # CAPA - sem emoji no PDF, emoji vira quadradinho
             fig = plt.figure(figsize=(8.5, 11))
             fig.patch.set_facecolor("#FFF8E7")
             ax = fig.add_axes([0, 0, 1, 1])
@@ -309,58 +313,56 @@ with aba3:
             ax.text(5, 4.3, "Feito com amor, verde e laranja!", ha="center", va="center", fontsize=12, color="#FF8C00", style="italic", weight="bold")
             pdf.savefig(fig); plt.close(fig)
 
-            # INDICE / LISTA DE TODAS
-            fig_idx, ax_idx = plt.subplots(figsize=(8.5, 11))
-            fig_idx.patch.set_facecolor("white")
-            ax_idx.axis("off")
-            ax_idx.set_title("Indice - Todas as Criancas", color="#2E7D32", weight="bold", fontsize=14, pad=20)
-            dados_idx = []
-            for i, (_, row) in enumerate(df_todas.iterrows(), start=1):
-                dados_idx.append([str(i), str(row["Codigo"]), str(int(row["Total Registros"])) if "Total Registros" in row else "0", str(int(row["Total Visitas"])) if "Total Visitas" in row else "0"])
-            col_labels_idx = ["N.", "Codigo", "Registros", "Visitas"]
-            tabela_idx = ax_idx.table(cellText=dados_idx, colLabels=col_labels_idx, loc="center", cellLoc="center", colWidths=[0.1, 0.5, 0.2, 0.2])
-            tabela_idx.auto_set_font_size(False); tabela_idx.set_fontsize(9); tabela_idx.scale(1, 1.4)
-            for j in range(len(col_labels_idx)):
-                tabela_idx[0, j].set_facecolor("#FF8C00"); tabela_idx[0, j].set_text_props(color="white", weight="bold")
-            pdf.savefig(fig_idx); plt.close(fig_idx)
+            # INDICE - em varias paginas de 25, para nao cortar
+            for start in range(0, len(df_todas), 25):
+                chunk = df_todas.iloc[start:start+25]
+                fig_idx, ax_idx = plt.subplots(figsize=(8.5, 11))
+                fig_idx.patch.set_facecolor("white")
+                ax_idx.axis("off")
+                ax_idx.set_title(f"Indice - Todas as Criancas ({start+1} a {start+len(chunk)})", color="#2E7D32", weight="bold", fontsize=14, pad=20)
+                dados_idx = []
+                for i, (_, row) in enumerate(chunk.iterrows(), start=start+1):
+                    dados_idx.append([str(i), str(row["Codigo"]), str(int(row["Total Registros"])), str(int(row["Total Visitas"]))])
+                col_labels_idx = ["N.", "Codigo", "Registros", "Visitas"]
+                tabela_idx = ax_idx.table(cellText=dados_idx, colLabels=col_labels_idx, loc="center", cellLoc="center", colWidths=[0.1, 0.5, 0.2, 0.2])
+                tabela_idx.auto_set_font_size(False); tabela_idx.set_fontsize(9); tabela_idx.scale(1, 1.4)
+                for j in range(len(col_labels_idx)):
+                    tabela_idx[0, j].set_facecolor("#FF8C00"); tabela_idx[0, j].set_text_props(color="white", weight="bold")
+                pdf.savefig(fig_idx); plt.close(fig_idx)
 
-            # UMA PAGINA POR CRIANCA
+            # UMA PAGINA POR CRIANCA - com continuacao se nao couber
             for idx, (_, linha) in enumerate(df_todas.iterrows(), start=1):
-                fig_c = plt.figure(figsize=(8.5, 11))
-                fig_c.patch.set_facecolor("#FFF8E7")
-                ax_c = fig_c.add_axes([0, 0, 1, 1])
-                ax_c.set_xlim(0, 10); ax_c.set_ylim(0, 11); ax_c.axis("off")
-                # Faixa topo verde/laranja
-                ax_c.add_patch(plt.Rectangle((0, 10.0), 10, 1.0, facecolor="#2E7D32", edgecolor="none"))
-                ax_c.text(5, 10.6, f"Crianca {idx} de {len(df_todas)}", ha="center", va="center", fontsize=12, weight="bold", color="white")
-                ax_c.text(5, 10.2, "Codigo: " + str(linha["Codigo"]), ha="center", va="center", fontsize=14, weight="bold", color="white")
-                y = 9.5
-                # Mostra todos os campos que tem valor
+                # Monta lista de linhas (titulo, valor) ja quebradas por palavra
+                linhas = []
                 for coluna in df_todas.columns:
                     if coluna == "Codigo":
                         continue
                     valor = str(linha[coluna]).strip()
                     if valor == "" or valor.lower() == "nan":
                         continue
-                    # Quebra texto longo em 2 linhas se precisar
                     titulo = str(coluna) + ": "
-                    # Se o valor for muito longo, corta para caber e continua na linha de baixo
-                    if len(valor) > 90:
-                        ax_c.text(0.6, y, titulo, ha="left", va="top", fontsize=10, weight="bold", color="#2E7D32")
-                        y -= 0.35
-                        # Quebra em pedacos de 90 caracteres
-                        for k in range(0, len(valor), 90):
-                            ax_c.text(0.6, y, valor[k:k+90], ha="left", va="top", fontsize=10, color="#222222")
-                            y -= 0.30
-                            if y < 0.5:
-                                break
-                    else:
-                        ax_c.text(0.6, y, titulo + valor, ha="left", va="top", fontsize=10, color="#222222", weight="bold" if "Total" in str(coluna) else "normal")
-                        y -= 0.35
-                    if y < 0.5:
-                        break
-                ax_c.text(5, 0.3, "OSC em Evidencia - SFA  |  Feito com amor 💚🧡", ha="center", va="center", fontsize=9, color="#FF8C00", style="italic")
-                pdf.savefig(fig_c); plt.close(fig_c)
+                    # CORRECAO 2: quebra por palavra, nao no meio da palavra
+                    partes = textwrap.wrap(titulo + valor, width=85, break_long_words=False, break_on_hyphens=False)
+                    linhas.extend(partes)
+                # Paginacao: 26 linhas por pagina
+                for pag_n, pag_start in enumerate(range(0, len(linhas), 26)):
+                    pag_linhas = linhas[pag_start:pag_start+26]
+                    fig_c = plt.figure(figsize=(8.5, 11))
+                    fig_c.patch.set_facecolor("#FFF8E7")
+                    ax_c = fig_c.add_axes([0, 0, 1, 1])
+                    ax_c.set_xlim(0, 10); ax_c.set_ylim(0, 11); ax_c.axis("off")
+                    ax_c.add_patch(plt.Rectangle((0, 10.0), 10, 1.0, facecolor="#2E7D32", edgecolor="none"))
+                    titulo_pag = f"Crianca {idx} de {len(df_todas)}"
+                    if pag_n > 0:
+                        titulo_pag += f" (continuacao {pag_n+1})"
+                    ax_c.text(5, 10.6, titulo_pag, ha="center", va="center", fontsize=12, weight="bold", color="white")
+                    ax_c.text(5, 10.2, "Codigo: " + str(linha["Codigo"]), ha="center", va="center", fontsize=14, weight="bold", color="white")
+                    y = 9.5
+                    for texto_linha in pag_linhas:
+                        ax_c.text(0.6, y, texto_linha, ha="left", va="top", fontsize=10, color="#222222")
+                        y -= 0.33
+                    ax_c.text(5, 0.3, "OSC em Evidencia - SFA  |  Feito com amor, verde e laranja!", ha="center", va="center", fontsize=9, color="#FF8C00", style="italic")
+                    pdf.savefig(fig_c); plt.close(fig_c)
         buf.seek(0)
         return buf.getvalue()
 
