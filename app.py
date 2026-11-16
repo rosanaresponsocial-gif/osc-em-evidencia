@@ -32,8 +32,6 @@ def sem_acento(t):
 
 if "avaliacoes" not in st.session_state:
     st.session_state["avaliacoes"] = []
-if "busca_crianca" not in st.session_state:
-    st.session_state["busca_crianca"] = ""
 if "escolha_crianca" not in st.session_state:
     st.session_state["escolha_crianca"] = "Todas"
 if "filtro_regiao" not in st.session_state:
@@ -44,7 +42,6 @@ if "filtro_prazo" not in st.session_state:
     st.session_state["filtro_prazo"] = "Todos"
 
 def limpar_busca():
-    st.session_state["busca_crianca"] = ""
     st.session_state["escolha_crianca"] = "Todas"
     st.session_state["filtro_regiao"] = "Todas"
     st.session_state["filtro_problema"] = "Todos"
@@ -70,7 +67,6 @@ if arquivo is not None:
         df = pd.read_excel(arquivo, sheet_name=nome_aba, header=linha_cab)
         df.columns = [str(c).strip() for c in df.columns]
         df = df.dropna(how="all")
-        # LIMPA ESPAÇOS DE TODAS AS CÉLULAS DE TEXTO - CORRIGE A BUSCA
         for c in df.columns:
             if df[c].dtype == object:
                 df[c] = df[c].astype(str).str.strip().replace("nan", "")
@@ -105,14 +101,12 @@ col_resultado = achar_coluna(["resultado"])
 col_bolsa = achar_coluna(["bolsa"])
 col_equipe = achar_coluna(["equipe"])
 
-# ---------- 2 - BUSCAR ----------
+# ---------- 2 - BUSCAR - SÓ PELA LISTA, SEM DIGITAR, SEM ENTER ----------
 st.markdown("### 2️⃣ 🔍 Buscar por Criança")
-busca = st.text_input("Buscar digitando", placeholder="Digite: 13 e aperte Enter / Concluir", key="busca_crianca")
-
-# Lista limpa, sem espaços, sem vazios
+st.caption("É só clicar na lista e escolher. Não precisa digitar nem apertar Enter.")
 valores_crianca = sorted([str(x).strip() for x in df[col_crianca].dropna().unique() if str(x).strip() != "" and str(x).strip().lower() != "nan"])
 lista_criancas = ["Todas"] + valores_crianca
-escolha = st.selectbox("Ou escolha a criança na lista:", lista_criancas, key="escolha_crianca")
+escolha = st.selectbox("Escolha a criança:", lista_criancas, key="escolha_crianca")
 
 c1, c2, c3 = st.columns(3)
 with c1:
@@ -127,25 +121,10 @@ with c3:
 
 st.button("🧹 Limpar busca / Mostrar todos", on_click=limpar_busca)
 
-# DEBUG - VAI MOSTRAR O QUE VOCÊ ESCOLHEU
-st.write(f"👉 Você escolheu na lista: **{escolha}** | Digitado: **{busca}** | Coluna usada: **{col_crianca}**")
-
 df_f = df.copy()
-# FILTRO POR NÚMERO - compara só os números, ignora acento e espaço
 if escolha != "Todas":
     num_escolha = re.sub(r"\D", "", str(escolha))
     df_f = df_f[df_f[col_crianca].astype(str).apply(lambda x: re.sub(r"\D", "", x) == num_escolha)]
-elif busca and busca.strip() != "":
-    b = sem_acento(busca)
-    b_num = re.sub(r"\D", "", b)
-    def match(v):
-        s = sem_acento(v)
-        s_num = re.sub(r"\D", "", s)
-        if b in s: return True
-        if b_num != "" and b_num == s_num: return True
-        if b_num != "" and b_num in s_num: return True
-        return False
-    df_f = df_f[df_f[col_crianca].apply(match)]
 
 if filtro_regiao != "Todas" and col_regiao:
     df_f = df_f[df_f[col_regiao].astype(str).str.strip() == filtro_regiao.strip()]
@@ -154,7 +133,7 @@ if filtro_problema != "Todos" and col_problema:
 if filtro_prazo != "Todos" and col_prazo:
     df_f = df_f[df_f[col_prazo].astype(str).str.strip() == filtro_prazo.strip()]
 
-st.write(f"Mostrando **{len(df_f)}** de **{len(df)}** casos")
+st.write(f"Mostrando {len(df_f)} de {len(df)} casos")
 st.dataframe(df_f, use_container_width=True)
 
 st.markdown("### 3️⃣ 💰 Custos")
