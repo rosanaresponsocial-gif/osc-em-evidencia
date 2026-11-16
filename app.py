@@ -6,7 +6,7 @@ from fpdf import FPDF
 
 st.set_page_config(page_title="SFA - Restrito", layout="wide")
 
-ARQUIVO_BASE = "dados_base.xlsx"
+ARQUIVO_BASE = "dados_base.csv"
 ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_COMPLEMENTAR = "dados_complementares.csv"
 ADMIN_LOGIN = "sfaevidencia"
