@@ -43,12 +43,55 @@ if "filtro_problema" not in st.session_state:
     st.session_state["filtro_problema"] = "Todos"
 if "filtro_prazo" not in st.session_state:
     st.session_state["filtro_prazo"] = "Todos"
+if "pdf_bytes" not in st.session_state:
+    st.session_state["pdf_bytes"] = None
 
 def limpar_busca():
     st.session_state["escolha_crianca"] = "Todas"
     st.session_state["filtro_regiao"] = "Todas"
     st.session_state["filtro_problema"] = "Todos"
     st.session_state["filtro_prazo"] = "Todos"
+
+def gerar_pdf(total_casos, escolha, avaliacoes):
+    try:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        from reportlab.lib.styles import getSampleStyleSheet
+        from reportlab.lib import colors
+        buf = BytesIO()
+        doc = SimpleDocTemplate(buf, pagesize=A4, topMargin=40, bottomMargin=40)
+        styles = getSampleStyleSheet()
+        story = []
+        story.append(Paragraph("<b>SFA - Familia Acolhedora em Evidencia</b>", styles["Title"]))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph(f"Relatorio de Evidencias - Total de casos: {total_casos}", styles["Normal"]))
+        story.append(Paragraph(f"Filtro atual - Crianca: {escolha}", styles["Normal"]))
+        story.append(Spacer(1, 12))
+        story.append(Paragraph("<b>Validacao - Avaliacoes:</b>", styles["Heading2"]))
+        if len(avaliacoes) == 0:
+            story.append(Paragraph("Nenhuma avaliacao registrada ainda.", styles["Normal"]))
+        else:
+            dados = [["Nome", "Decisao", "Comentario"]]
+            for a in avaliacoes:
+                dados.append([str(a["Nome"]), str(a["Decisão"]), str(a["Comentário"])])
+            t = Table(dados, colWidths=[120, 120, 220])
+            t.setStyle(TableStyle([
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E85D04")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ]))
+            story.append(t)
+            n_aprov = sum(1 for a in avaliacoes if "Aprovo" in a["Decisão"])
+            story.append(Spacer(1, 12))
+            story.append(Paragraph(f"{n_aprov} de {len(avaliacoes)} aprovaram.", styles["Normal"]))
+            if n_aprov >= 2:
+                story.append(Paragraph("<b>RELATORIO APROVADO - 2 de 3 aprovaram</b>", styles["Normal"]))
+        doc.build(story)
+        buf.seek(0)
+        return buf.getvalue()
+    except Exception as e:
+        return None
 
 st.markdown("### 1️⃣ Subir o Excel Base")
 arquivo = st.file_uploader("", type=["xlsx"])
@@ -234,9 +277,20 @@ if len(st.session_state["avaliacoes"]) > 0:
     if n_aprov >= 2:
         st.success(f"✅ RELATÓRIO APROVADO - {n_aprov} de 3 aprovaram")
 
+# ---------- 8 - PDF COM BOTAO ----------
 st.markdown("### 8️⃣ 📄 Relatório em PDF")
-st.write(f"Total de casos: {len(df)}")
+st.write(f"Total de casos: {len(df)} | Filtro atual: {escolha}")
 if len(st.session_state["avaliacoes"]) > 0:
     for a in st.session_state["avaliacoes"]:
         st.write(f"- {a['Nome']} | {a['Decisão']} | {a['Comentário']}")
-st.info("Para gerar PDF: aperte Ctrl+P no navegador e salve como PDF.")
+
+if st.button("📄 Gerar Relatório em PDF"):
+    pdf = gerar_pdf(len(df), escolha, st.session_state["avaliacoes"])
+    if pdf is None:
+        st.error("Não consegui gerar o PDF. Vou tentar instalar a biblioteca. Aperte Ctrl+P por enquanto e salve como PDF.")
+    else:
+        st.session_state["pdf_bytes"] = pdf
+        st.success("✅ PDF gerado! Agora clica em Baixar.")
+
+if st.session_state["pdf_bytes"] is not None:
+    st.download_button("⬇️ Baixar PDF", st.session_state["pdf_bytes"], file_name="relatorio_sfa.pdf", mime="application/pdf")
