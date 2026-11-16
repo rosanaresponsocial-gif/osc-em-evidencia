@@ -8,7 +8,6 @@ from datetime import date
 
 st.set_page_config(page_title="SFA - Família Acolhedora", layout="wide", page_icon="🏠")
 
-# --- INTERFACE NOVA: VERDE, LARANJA, BRANCO ---
 st.markdown("""
 <style>
     .stApp { background-color: #FFFFFF; }
@@ -25,7 +24,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- LOGO ---
 if os.path.exists("logo.png"):
     c_logo1, c_logo2, c_logo3 = st.columns([1, 2, 1])
     with c_logo2:
@@ -126,19 +124,22 @@ if uploaded:
                 break
         if aba is None:
             aba = xls.sheet_names[1] if len(xls.sheet_names) > 1 else xls.sheet_names[0]
-        # CORRECAO GRAFICO: Acha sozinho a linha do cabecalho de verdade - pula titulo
+        # CORRECAO GRAFICO V2: Ignora titulo, so aceita linha com varias colunas + 2 palavras-chave
         df_teste = pd.read_excel(uploaded, sheet_name=aba, header=None)
         linha_cabecalho = 0
+        palavras_chave = ["crian", "regi", "problema", "desfecho", "objetivo", "status", "prazo", "custo", "interven"]
         for i, linha in df_teste.iterrows():
-            texto_linha = " ".join([str(x).lower() for x in linha.values if pd.notna(x)])
-            if "crian" in texto_linha or "regi" in texto_linha or "problema" in texto_linha or "desfecho" in texto_linha or "objetivo" in texto_linha:
+            valores = [str(x).strip() for x in linha.values if pd.notna(x) and str(x).strip() != ""]
+            if len(valores) < 4:
+                continue
+            texto_linha = " ".join(valores).lower()
+            pontos = sum(1 for p in palavras_chave if p in texto_linha)
+            if pontos >= 2:
                 linha_cabecalho = i
                 break
         df = pd.read_excel(uploaded, sheet_name=aba, header=linha_cabecalho).dropna(how="all")
-        # Tira colunas vazias Unnamed
         df = df.loc[:, ~df.columns.astype(str).str.contains("Unnamed")]
         df = df.dropna(axis=1, how="all")
-        # Limpa nomes das colunas - tira espaco extra
         df.columns = [str(c).strip() for c in df.columns]
         st.session_state.base = df
         st.success(f"✅ Base carregada: {len(df)} casos | Aba: {aba}")
