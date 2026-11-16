@@ -87,15 +87,29 @@ with aba2:
                     registros.append({"Data": "", "Evolucao": p.text.strip()})
         return registros
 
-    def contar(registros):
-        texto_tudo = " ".join([r["Evolucao"] for r in registros]).lower()
-        total_visitas = texto_tudo.count("visita")
-        total_contatos = texto_tudo.count("contato") + texto_tudo.count("whatsapp") + texto_tudo.count("ligacao") + texto_tudo.count("ligação")
-        total_articulacoes = texto_tudo.count("articula")
-        total_consultas = texto_tudo.count("consulta") + texto_tudo.count("ubs") + texto_tudo.count("pediatra") + texto_tudo.count("saude") + texto_tudo.count("saúde")
-        total_atendimentos = texto_tudo.count("atendimento")
-        return total_visitas, total_contatos, total_articulacoes, total_consultas, total_atendimentos
-
+        def contar(registros):
+        visitas = 0
+        contatos = 0
+        articulacoes = 0
+        consultas = 0
+        atendimentos = 0
+        for r in registros:
+            texto = r["Evolucao"].lower()
+            # Tira a parte da Situacao semanal, que nao e consulta
+            # So conta o que vem depois de "contato", "visita", etc.
+            if "visita" in texto:
+                # Conta 1 por linha, nao por palavra
+                visitas += 1
+            if "contato" in texto or "whatsapp" in texto or "ligacao" in texto or "ligação" in texto:
+                contatos += 1
+            if "articula" in texto:
+                articulacoes += 1
+            if "atendimento" in texto:
+                atendimentos += 1
+            # SAUDE - so conta se for consulta de verdade, nao o cabecalho
+            if "consulta realizada" in texto or "consulta com" in texto or "consulta na" in texto or "pediatra" in texto or "contato realizado com a ubs" in texto or "atendimento na ubs" in texto:
+                consultas += 1
+        return visitas, contatos, articulacoes, consultas, atendimentos
     if arquivo_word is not None:
         registros = ler_tabela_word(arquivo_word)
         st.success(f"Achei {len(registros)} registros no Word!")
