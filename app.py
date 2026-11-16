@@ -2,24 +2,40 @@ import streamlit as st
 import pandas as pd
 import re
 import io
+import os
 import unicodedata
 from datetime import date
 
-st.set_page_config(page_title="SFA - Relatório de Impacto", layout="wide")
+st.set_page_config(page_title="SFA - Família Acolhedora", layout="wide", page_icon="🏠")
 
+# --- INTERFACE NOVA: VERDE, LARANJA, BRANCO ---
 st.markdown("""
 <style>
-    .main { background-color: #FFF8F0; }
-    h1 { color: #6B3A2A; font-size: 32px; }
-    h2 { color: #8B5A2B; border-left: 5px solid #E8A87C; padding-left: 10px; }
-    .stMetric { background-color: white; padding: 15px; border-radius: 12px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .stButton > button { border-radius: 10px; font-weight: bold; }
+    .stApp { background-color: #FFFFFF; }
+    h1 { color: #1E7A34 !important; font-size: 36px !important; }
+    h2 { color: #1E7A34 !important; border-left: 6px solid #FF7A00; padding-left: 12px; background: #FFF4E6; padding-top: 8px; padding-bottom: 8px; border-radius: 0 12px 12px 0; }
+    h3 { color: #E86A00 !important; }
+    .stMetric { background-color: #F0F9F1; padding: 15px; border-radius: 14px; border: 2px solid #C8E6C9; }
+    .stMetric label { color: #1E7A34 !important; font-weight: bold; }
+    .stButton > button { background-color: #FF7A00 !important; color: white !important; border-radius: 12px; font-weight: bold; border: none; padding: 10px 20px; }
+    .stButton > button:hover { background-color: #1E7A34 !important; }
+    .stDownloadButton > button { background-color: #1E7A34 !important; color: white !important; border-radius: 12px; font-weight: bold; }
+    .stTextInput > div > div > input, .stTextArea > div > div > textarea { border-radius: 12px; border: 2px solid #FFB366; }
+    div[data-testid="stExpander"] { border: 2px solid #FFB366; border-radius: 12px; }
 </style>
 """, unsafe_allow_html=True)
 
-st.title("🏠 SFA - Relatório de Impacto Social")
-st.markdown("### OSC em Evidência | Serviço de Acolhimento em Família Acolhedora")
-st.markdown("> **A equipe escreve em Word. O app transforma em dado. Nada se perde.**")
+# --- LOGO ---
+if os.path.exists("logo.png"):
+    c_logo1, c_logo2, c_logo3 = st.columns([1, 2, 1])
+    with c_logo2:
+        st.image("logo.png", width=320)
+else:
+    st.markdown("<div style='text-align:center; font-size:70px;'>🏠 🧒 👧 🌱</div>", unsafe_allow_html=True)
+    st.caption("Dica: Suba a imagem do logo como logo.png no GitHub para ela aparecer aqui no topo.")
+
+st.markdown("<div style='text-align:center;'><h1>🏠 SFA - Família Acolhedora</h1><h3 style='color:#FF7A00;'>OSC em Evidência | Relatório de Impacto Social</h3><p style='font-size:18px;'>🧒 <b>Toda criança merece uma família.</b> 👨‍👩‍👧 <b>Toda família merece apoio.</b> 🌱 <b>Todo vínculo pode ser reconstruído.</b></p></div>", unsafe_allow_html=True)
+st.markdown("<div style='background:#1E7A34; color:white; padding:12px; border-radius:12px; text-align:center; font-size:16px;'>💚 <b>A equipe escreve em Word.</b> 🧡 <b>O app transforma em dado.</b> 🤍 <b>Nada se perde.</b></div>", unsafe_allow_html=True)
 st.markdown("---")
 
 def divisao_segura(num, den):
@@ -73,6 +89,24 @@ def extrair_codigo(texto):
         return f"Criança_{m.group(1)}"
     return "Não identificado"
 
+def mostrar_grafico(df, coluna, titulo, emoji):
+    st.subheader(f"{emoji} {titulo}")
+    if coluna is None:
+        st.warning(f"⚠️ Coluna não encontrada no Excel para: {titulo}")
+        st.caption(f"Colunas que o app achou: {list(df.columns)}")
+        return
+    try:
+        contagem = df[coluna].fillna("Sem informação").astype(str).str.strip().value_counts()
+        if len(contagem) == 0:
+            st.info("Sem dados para mostrar aqui.")
+            return
+        st.bar_chart(contagem, color="#FF7A00")
+        st.caption(f"Total: {int(contagem.sum())} casos | Coluna usada: {coluna}")
+        st.dataframe(contagem.reset_index().rename(columns={"index": titulo, coluna: "Quantidade"}), use_container_width=True)
+    except Exception as e:
+        st.error(f"Não consegui desenhar o gráfico: {e}")
+        st.dataframe(df[coluna].value_counts(), use_container_width=True)
+
 if "base" not in st.session_state:
     st.session_state.base = None
 if "avaliacoes" not in st.session_state:
@@ -95,6 +129,7 @@ if uploaded:
         df = pd.read_excel(uploaded, sheet_name=aba, header=0).dropna(how="all")
         st.session_state.base = df
         st.success(f"✅ Base carregada: {len(df)} casos | Aba: {aba}")
+        st.caption(f"Colunas encontradas: {list(df.columns)}")
     except Exception as e:
         st.error(f"Erro: {e}")
 
@@ -174,34 +209,34 @@ total_atend = int(pd.to_numeric(df[col_atendidos], errors="coerce").fillna(0).su
 custo_tot = float(pd.to_numeric(df[col_custo], errors="coerce").fillna(0).sum()) if col_custo else 0
 media_custo = divisao_segura(custo_tot, len(df))
 m1, m2, m3, m4 = st.columns(4)
-with m1: st.metric("Casos Filtrados", len(df))
-with m2: st.metric("Concluídos", int(concluidos))
-with m3: st.metric("% No Prazo", f"{no_prazo_perc:.1f}%", f"{antes} antes + {dentro} dentro")
-with m4: st.metric("Intervenções", total_interv)
+with m1: st.metric("🧒 Casos Filtrados", len(df))
+with m2: st.metric("✅ Concluídos", int(concluidos))
+with m3: st.metric("⏰ % No Prazo", f"{no_prazo_perc:.1f}%", f"{antes} antes + {dentro} dentro")
+with m4: st.metric("💬 Intervenções", total_interv)
 m5, m6, m7 = st.columns(3)
-with m5: st.metric("Pessoas Atendidas", total_atend)
-with m6: st.metric("Custo Total", formata_moeda(custo_tot))
-with m7: st.metric("Custo Médio / Criança", formata_moeda(media_custo))
+with m5: st.metric("👨‍👩‍👧 Pessoas Atendidas", total_atend)
+with m6: st.metric("💰 Custo Total", formata_moeda(custo_tot))
+with m7: st.metric("💰 Custo Médio / Criança", formata_moeda(media_custo))
 
 st.header("💛 A História Por Trás dos Números")
-st.markdown("**Antes:** A criança chega em acolhimento, afastada da família, com medo, sem vínculo. **Durante:** A equipe faz conversas, relatórios, encaminhamentos. **Depois:** A criança volta para casa com o vínculo reconstruído, dentro do prazo.")
+st.markdown("**😢 Antes:** A criança chega em acolhimento, afastada da família, com medo, sem vínculo. **🤝 Durante:** A equipe faz conversas, relatórios, encaminhamentos. **🏠 Depois:** A criança volta para casa com o vínculo reconstruído, dentro do prazo. **🌱 Isso é impacto social.**")
 
 st.header("4️⃣ Gráficos de Impacto")
+st.markdown("Se algum gráfico aparecer com aviso, me manda print do aviso que eu te digo qual é o nome da coluna no seu Excel.")
 g1, g2 = st.columns(2)
 with g1:
-    if col_problema:
-        st.subheader("Por Problema Inicial")
-        st.bar_chart(df[col_problema].value_counts())
-    if col_desfecho:
-        st.subheader("Por Desfecho")
-        st.bar_chart(df[col_desfecho].value_counts())
+    mostrar_grafico(df, col_problema, "Por Problema Inicial", "📊")
+    mostrar_grafico(df, col_desfecho, "Por Desfecho", "🏠")
 with g2:
-    if col_status:
-        st.subheader("Por Status do Prazo")
-        st.bar_chart(df[col_status].value_counts())
-    if col_regiao:
-        st.subheader("Por Região")
-        st.bar_chart(df[col_regiao].value_counts())
+    mostrar_grafico(df, col_status, "Por Status do Prazo", "⏰")
+    mostrar_grafico(df, col_regiao, "Por Região", "📍")
+if st.session_state.registros_word:
+    st.subheader("📈 Evolução dos Relatórios em Word")
+    df_gw = pd.DataFrame(st.session_state.registros_word)
+    for c in ["Vínculo (nota 0-3)", "Emocional (nota 0-3)", "Escola (nota 0-3)", "Evolução (nota 0-3)"]:
+        df_gw[c] = pd.to_numeric(df_gw[c], errors="coerce")
+    st.bar_chart(df_gw[["Vínculo (nota 0-3)", "Emocional (nota 0-3)", "Escola (nota 0-3)", "Evolução (nota 0-3)"]].mean(), color="#1E7A34")
+    st.caption("Média das notas 0-3 dos relatórios em Word já transformados.")
 
 st.header("5️⃣ Alertas Automáticos")
 alertas = []
@@ -399,3 +434,4 @@ Fonte: Base real do Excel + relatórios Word transformados. Dados anonimizados -
 st.text_area("Prévia do Relatório", texto_relatorio, height=300)
 st.download_button("⬇️ Baixar Relatório em TXT (para virar PDF)", texto_relatorio.encode("utf-8"), "relatorio_impacto_sfa.txt", "text/plain")
 st.download_button("⬇️ Baixar Base Filtrada em CSV", df.to_csv(index=False).encode("utf-8"), "base_filtrada_sfa.csv", "text/csv")
+st.markdown("<div style='background:#FFF4E6; padding:12px; border-radius:12px; text-align:center;'>💚 <b>Família Acolhedora</b> 🧡 <b>OSC em Evidência</b> 🤍 <b>Toda criança merece uma família</b></div>", unsafe_allow_html=True)
