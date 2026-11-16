@@ -305,7 +305,24 @@ if st.session_state.registros_word:
         st.session_state.registros_word = df_editado.to_dict("records")
         st.success("✅ Correções salvas!")
         st.rerun()
-    st.download_button("⬇️ Baixar Excel Consolidado (CSV)", pd.DataFrame(st.session_state.registros_word).to_csv(index=False).encode("utf-8"), "relatorios_word_para_excel_sfa.csv", "text/csv")
+    # Baixar como Excel de verdade - já estruturado, abre certo no Excel
+import io
+buffer = io.BytesIO()
+with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+    pd.DataFrame(st.session_state.registros_word).to_excel(writer, index=False, sheet_name="Relatorios_Word")
+    # Ajusta largura das colunas para não ficar apertado
+    ws = writer.sheets["Relatorios_Word"]
+    for col in ws.columns:
+        max_len = 0
+        col_letter = col[0].column_letter
+        for cell in col:
+            if cell.value:
+                max_len = max(max_len, len(str(cell.value)))
+        ws.column_dimensions[col_letter].width = min(max_len + 2, 50)
+buffer.seek(0)
+st.download_button("⬇️ Baixar Excel Consolidado - Estruturado (.xlsx)", buffer, "relatorios_word_para_excel_SFA.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+# Mantém CSV também, para quem usa Google Sheets
+st.download_button("⬇️ Baixar também em CSV (para Google Sheets)", pd.DataFrame(st.session_state.registros_word).to_csv(index=False, sep=";", encoding="utf-8-sig").encode("utf-8-sig"), "relatorios_word_para_excel_SFA.csv", "text/csv")
     st.info("⚠️ Para não perder: Baixe o CSV e guarde no Drive. Na próxima vez, suba ele de novo para acumular.")
     csv_antigo = st.file_uploader("Suba o CSV antigo para acumular", type=["csv"], key="csv_antigo_v2")
     if csv_antigo:
