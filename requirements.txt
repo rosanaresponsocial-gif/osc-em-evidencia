@@ -1,4 +1,5 @@
-streamlit
+javascriptstreamlit
 pandas
+python-docx
 openpyxl
-google-generativeai
+
