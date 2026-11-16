@@ -6,13 +6,12 @@ from fpdf import FPDF
 
 st.set_page_config(page_title="SFA - Restrito", layout="wide")
 
-# --- CONFIG ---
 ARQUIVO_BASE = "dados_base.xlsx"
 ARQUIVO_USUARIOS = "usuarios.csv"
 ARQUIVO_COMPLEMENTAR = "dados_complementares.csv"
 ADMIN_LOGIN = "sfaevidencia"
+SENHA_ADMIN_NOVA = "Sfa2026"
 
-# --- FUNCOES ---
 def criptografar(senha):
     return hashlib.sha256(senha.encode()).hexdigest()
 
@@ -37,13 +36,11 @@ def carregar_complementar():
         return pd.DataFrame(columns=["codigo", "preenchido_por", "observacao", "data_avaliacao"])
     return pd.read_csv(ARQUIVO_COMPLEMENTAR, dtype=str).fillna("")
 
-# --- SESSAO ---
 if "logado" not in st.session_state:
     st.session_state.logado = False
     st.session_state.login = ""
     st.session_state.nome = ""
 
-# --- TELA DE LOGIN / CADASTRO ---
 if not st.session_state.logado:
     st.title("SFA - Acesso Restrito")
     st.write("Somente pessoas aprovadas pela administradora.")
@@ -54,18 +51,32 @@ if not st.session_state.logado:
         senha = st.text_input("Senha", type="password", key="senha_entrar")
         if st.button("Entrar", use_container_width=True):
             usuarios = carregar_usuarios()
-            user = usuarios[usuarios["login"] == login]
-            if user.empty:
-                st.error("Login nao encontrado.")
-            elif user.iloc[0]["senha_hash"] != criptografar(senha):
-                st.error("Senha errada.")
-            elif user.iloc[0]["status"] != "aprovado" and login != ADMIN_LOGIN:
-                st.warning("Seu cadastro esta aguardando aprovacao da administradora.")
-            else:
+            # RESET DA ADMIN - entra com a senha nova
+            if login == ADMIN_LOGIN and senha == SENHA_ADMIN_NOVA:
+                if login not in usuarios["login"].values:
+                    novo = pd.DataFrame([{"nome": "Roseane", "login": ADMIN_LOGIN, "senha_hash": criptografar(SENHA_ADMIN_NOVA), "status": "aprovado"}])
+                    usuarios = pd.concat([usuarios, novo], ignore_index=True)
+                else:
+                    usuarios.loc[usuarios["login"] == ADMIN_LOGIN, "senha_hash"] = criptografar(SENHA_ADMIN_NOVA)
+                    usuarios.loc[usuarios["login"] == ADMIN_LOGIN, "status"] = "aprovado"
+                salvar_usuarios(usuarios)
                 st.session_state.logado = True
                 st.session_state.login = login
-                st.session_state.nome = user.iloc[0]["nome"]
+                st.session_state.nome = "Roseane"
                 st.rerun()
+            else:
+                user = usuarios[usuarios["login"] == login]
+                if user.empty:
+                    st.error("Login nao encontrado.")
+                elif user.iloc[0]["senha_hash"] != criptografar(senha):
+                    st.error("Senha errada.")
+                elif user.iloc[0]["status"] != "aprovado" and login != ADMIN_LOGIN:
+                    st.warning("Seu cadastro esta aguardando aprovacao da administradora.")
+                else:
+                    st.session_state.logado = True
+                    st.session_state.login = login
+                    st.session_state.nome = user.iloc[0]["nome"]
+                    st.rerun()
 
     with aba[1]:
         nome_novo = st.text_input("Seu nome completo")
@@ -80,22 +91,15 @@ if not st.session_state.logado:
                     st.error("Esse login ja existe. Escolha outro.")
                 else:
                     status_novo = "aprovado" if login_novo == ADMIN_LOGIN else "pendente"
-                    novo = pd.DataFrame([{
-                        "nome": nome_novo,
-                        "login": login_novo,
-                        "senha_hash": criptografar(senha_nova),
-                        "status": status_novo
-                    }])
+                    novo = pd.DataFrame([{"nome": nome_novo, "login": login_novo, "senha_hash": criptografar(senha_nova), "status": status_novo}])
                     usuarios = pd.concat([usuarios, novo], ignore_index=True)
                     salvar_usuarios(usuarios)
                     if status_novo == "aprovado":
                         st.success("Cadastro de administradora criado! Agora va para Entrar.")
                     else:
                         st.success("Cadastro enviado! Aguarde aprovacao.")
-
     st.stop()
 
-# --- LOGADO ---
 st.sidebar.write(f"Ola, {st.session_state.nome}")
 st.sidebar.write(f"Login: {st.session_state.login}")
 if st.button("Sair", key="sair"):
@@ -104,7 +108,6 @@ if st.button("Sair", key="sair"):
 
 eh_admin = (st.session_state.login == ADMIN_LOGIN)
 
-# --- PAINEL ADMIN ---
 if eh_admin:
     st.title("Painel da Administradora")
     usuarios = carregar_usuarios()
@@ -123,7 +126,6 @@ if eh_admin:
             st.rerun()
     st.divider()
 
-# --- APP PRINCIPAL ---
 st.title("Avaliacao - So Codigo")
 df_base = carregar_base()
 df_comp = carregar_complementar()
@@ -138,12 +140,7 @@ if codigo_escolhido:
         data_av = st.date_input("Data da avaliacao")
         enviar = st.form_submit_button("Salvar avaliacao")
         if enviar:
-            novo = pd.DataFrame([{
-                "codigo": codigo_escolhido,
-                "preenchido_por": st.session_state.login,
-                "observacao": obs,
-                "data_avaliacao": str(data_av)
-            }])
+            novo = pd.DataFrame([{"codigo": codigo_escolhido, "preenchido_por": st.session_state.login, "observacao": obs, "data_avaliacao": str(data_av)}])
             df_comp = pd.concat([df_comp, novo], ignore_index=True)
             df_comp.to_csv(ARQUIVO_COMPLEMENTAR, index=False)
             st.success("Salvo com sucesso!")
@@ -160,9 +157,4 @@ if codigo_escolhido:
         for _, r in comp_esse.iterrows():
             pdf.multi_cell(0, 10, f"- {r['data_avaliacao']}: {r['observacao']}")
         pdf_bytes = pdf.output()
-        st.download_button(
-            label="Baixar PDF agora",
-            data=bytes(pdf_bytes),
-            file_name=f"relatorio_{codigo_escolhido}.pdf",
-            mime="application/pdf"
-        )
+        st.download_button(label="Baixar PDF agora", data=bytes(pdf_bytes), file_name=f"relatorio_{codigo_escolhido}.pdf", mime="application/pdf")
