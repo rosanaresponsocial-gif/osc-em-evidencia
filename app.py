@@ -79,10 +79,11 @@ def carregar_base():
     df = df[df["Codigo"].str.lower() != "nan"]
     df = df[~df["Codigo"].str.upper().isin(["TOTAL", "TOTAL GERAL", "TOTAIS"])]
     df = df[~df["Codigo"].str.upper().str.startswith("TOTAL")]
+    # CORRECAO: nunca deixa codigo duplicado, fica so o ultimo
+    df = df.drop_duplicates(subset=["Codigo"], keep="last")
     return df
 
 def corrigir_codigo(digitado, df_base):
-    # CORRECAO: se digitou so "1", procura SFA-SP-202501 na base
     digitado = str(digitado).strip()
     if digitado == "":
         return digitado
@@ -90,22 +91,21 @@ def corrigir_codigo(digitado, df_base):
         return digitado
     if digitado.isdigit():
         num = int(digitado)
-        # Tenta achar SFA-SP-2025 + numero com 2 digitos, ex: 1 -> 202501
         for cod in df_base["Codigo"].tolist():
             cod_str = str(cod).strip()
             if cod_str.endswith(f"{num:02d}") or cod_str.endswith(str(num)):
-                # So aceita se for SFA
                 if "SFA" in cod_str:
                     return cod_str
-        # Se nao achou, cria SFA-SP-2025 + numero
         return f"SFA-SP-2025{num:02d}"
     return digitado
 
 df_base = carregar_base()
 if len(st.session_state.novos_casos) > 0:
+    # CORRECAO: junta novos casos e tira duplicado, fica so o atualizado
     df_base = pd.concat([df_base, pd.DataFrame(st.session_state.novos_casos)], ignore_index=True).fillna("")
     df_base["Codigo"] = df_base["Codigo"].astype(str).str.strip()
     df_base = df_base[~df_base["Codigo"].str.upper().str.startswith("TOTAL")]
+    df_base = df_base.drop_duplicates(subset=["Codigo"], keep="last")
 
 st.markdown('<div class="topo"><h1>🧒👧🏽 OSC em Evidencia - SFA 👦🏻👧🏾</h1><p>👨‍👩‍👧‍👦 👩‍👧🏽 👨‍👧🏻 👩‍👩‍👧‍👦 👨‍👨‍👧 Famílias diversas • Crianças • Adolescentes • Acolhimento 💚🧡</p><p>🌈 Cada criança importa! Cada família importa!</p></div>', unsafe_allow_html=True)
 st.markdown('<div class="card-alegre">👶🧒👧 <b>Bem-vinda!</b> Aqui a gente cuida com amor, alegria e respeito a diversidade. 💚🧡🌈</div>', unsafe_allow_html=True)
@@ -190,9 +190,15 @@ with aba2:
             else:
                 codigo_final = corrigir_codigo(novo_codigo, df_base)
                 st.success(f"Codigo corrigido para: {codigo_final} ✅")
-                nova_linha = {}
-                for col in df_base.columns:
-                    nova_linha[col] = ""
+                # CORRECAO PRINCIPAL: se a crianca ja existe, COPIA os dados dela e so atualiza os totais
+                # Antes ele criava uma linha vazia, por isso a pagina 74 vinha so com totais
+                if codigo_final in df_base["Codigo"].tolist():
+                    nova_linha = df_base[df_base["Codigo"] == codigo_final].iloc[0].to_dict()
+                    st.info(f"Achado! Vou atualizar a crianca {codigo_final} que ja existe, sem duplicar. 💚")
+                else:
+                    nova_linha = {}
+                    for col in df_base.columns:
+                        nova_linha[col] = ""
                 nova_linha["Codigo"] = codigo_final
                 nova_linha["Total Registros"] = str(len(registros))
                 nova_linha["Total Visitas"] = str(visitas)
@@ -203,12 +209,11 @@ with aba2:
                 nova_linha["Primeiro Contato"] = primeiro
                 nova_linha["Ultimo Contato"] = ultimo
                 nova_linha["Resumo Evolucao"] = resumo
-                # Se ja existe esse codigo na base, atualiza em vez de duplicar
-                df_base_sem_dup = df_base[df_base["Codigo"] != codigo_final]
                 st.session_state.novos_casos = [c for c in st.session_state.novos_casos if c.get("Codigo") != codigo_final]
                 st.session_state.novos_casos.append(nova_linha)
-                df_novo = pd.concat([df_base_sem_dup, pd.DataFrame([nova_linha])], ignore_index=True).fillna("")
-                st.success(f"Caso {codigo_final} adicionado/atualizado! 💚")
+                df_novo = pd.concat([df_base, pd.DataFrame([nova_linha])], ignore_index=True).fillna("")
+                df_novo = df_novo.drop_duplicates(subset=["Codigo"], keep="last")
+                st.success(f"Caso {codigo_final} atualizado! Agora sem duplicar. 💚")
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
                     df_novo.to_excel(writer, index=False, startrow=3, sheet_name="2_Base_Casos_Criancas")
@@ -228,6 +233,7 @@ with aba3:
     df_todas = df_base.copy()
     df_todas["Codigo"] = df_todas["Codigo"].astype(str).str.strip()
     df_todas = df_todas[~df_todas["Codigo"].str.upper().str.startswith("TOTAL")]
+    df_todas = df_todas.drop_duplicates(subset=["Codigo"], keep="last").sort_values("Codigo")
 
     if len(df_com_dados) == 0:
         st.info("Ainda nao tem nenhum caso com dados do Word. Suba um Word na aba 2, digite o Codigo e clique em Adicionar. Depois volte aqui. 💚")
@@ -350,7 +356,6 @@ with aba3:
                     tabela_idx[0, j].set_facecolor("#FF8C00"); tabela_idx[0, j].set_text_props(color="white", weight="bold")
                 pdf.savefig(fig_idx); plt.close(fig_idx)
 
-            # CORRECAO CABECALHO: agora cada pagina tem cabeçalho, inclusive a primeira da criança
             for idx, (_, linha) in enumerate(df_todas.iterrows(), start=1):
                 linhas = []
                 for coluna in df_todas.columns:
@@ -362,7 +367,6 @@ with aba3:
                     titulo = str(coluna) + ": "
                     partes = textwrap.wrap(titulo + valor, width=85, break_long_words=False, break_on_hyphens=False)
                     linhas.extend(partes)
-                # Garante pelo menos 1 pagina mesmo se sem linhas
                 if len(linhas) == 0:
                     linhas = ["Sem informacoes preenchidas."]
                 for pag_n, pag_start in enumerate(range(0, len(linhas), 26)):
@@ -371,7 +375,6 @@ with aba3:
                     fig_c.patch.set_facecolor("#FFF8E7")
                     ax_c = fig_c.add_axes([0, 0, 1, 1])
                     ax_c.set_xlim(0, 10); ax_c.set_ylim(0, 11); ax_c.axis("off")
-                    # Faixa sempre desenhada, com zorder alto para nao sumir
                     ax_c.add_patch(plt.Rectangle((0, 10.0), 10, 1.0, facecolor="#2E7D32", edgecolor="none", zorder=3))
                     titulo_pag = f"Crianca {idx} de {len(df_todas)}"
                     if pag_n > 0:
