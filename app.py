@@ -77,10 +77,29 @@ def carregar_base():
     df["Codigo"] = df["Codigo"].astype(str).str.strip()
     df = df[df["Codigo"] != ""]
     df = df[df["Codigo"].str.lower() != "nan"]
-    # CORRECAO 1: tira linha TOTAL / TOTAL GERAL - nao e crianca
     df = df[~df["Codigo"].str.upper().isin(["TOTAL", "TOTAL GERAL", "TOTAIS"])]
     df = df[~df["Codigo"].str.upper().str.startswith("TOTAL")]
     return df
+
+def corrigir_codigo(digitado, df_base):
+    # CORRECAO: se digitou so "1", procura SFA-SP-202501 na base
+    digitado = str(digitado).strip()
+    if digitado == "":
+        return digitado
+    if "SFA" in digitado.upper():
+        return digitado
+    if digitado.isdigit():
+        num = int(digitado)
+        # Tenta achar SFA-SP-2025 + numero com 2 digitos, ex: 1 -> 202501
+        for cod in df_base["Codigo"].tolist():
+            cod_str = str(cod).strip()
+            if cod_str.endswith(f"{num:02d}") or cod_str.endswith(str(num)):
+                # So aceita se for SFA
+                if "SFA" in cod_str:
+                    return cod_str
+        # Se nao achou, cria SFA-SP-2025 + numero
+        return f"SFA-SP-2025{num:02d}"
+    return digitado
 
 df_base = carregar_base()
 if len(st.session_state.novos_casos) > 0:
@@ -163,16 +182,18 @@ with aba2:
         st.subheader("📊 Grafico desse relatorio")
         df_graf_word = pd.DataFrame({"Tipo": ["Visitas", "Contatos", "Articulacoes", "Consultas Saude", "Atendimentos"], "Quantidade": [visitas, contatos, articulacoes, consultas, atendimentos]})
         st.bar_chart(df_graf_word.set_index("Tipo"))
-        novo_codigo = st.text_input("ID do Caso / Codigo da crianca desse relatorio - ex: SFA-SP-202542", value="")
-        st.caption("⚠️ Digite o codigo completo com SFA, nao so o numero 1, 2, 3. Ex: SFA-SP-202542")
+        novo_codigo = st.text_input("ID do Caso / Codigo - pode digitar so 1, 2, 3 ou completo SFA-SP-202501", value="")
+        st.caption("Dica: pode digitar so 1 que o app ja completa para SFA-SP-202501 sozinho!")
         if st.button("Adicionar e gerar Excel novo ✨"):
             if novo_codigo.strip() == "":
-                st.error("Preencha o ID do Caso, ex: SFA-SP-202542")
+                st.error("Preencha o ID do Caso")
             else:
+                codigo_final = corrigir_codigo(novo_codigo, df_base)
+                st.success(f"Codigo corrigido para: {codigo_final} ✅")
                 nova_linha = {}
                 for col in df_base.columns:
                     nova_linha[col] = ""
-                nova_linha["Codigo"] = str(novo_codigo).strip()
+                nova_linha["Codigo"] = codigo_final
                 nova_linha["Total Registros"] = str(len(registros))
                 nova_linha["Total Visitas"] = str(visitas)
                 nova_linha["Total Contatos"] = str(contatos)
@@ -182,9 +203,12 @@ with aba2:
                 nova_linha["Primeiro Contato"] = primeiro
                 nova_linha["Ultimo Contato"] = ultimo
                 nova_linha["Resumo Evolucao"] = resumo
+                # Se ja existe esse codigo na base, atualiza em vez de duplicar
+                df_base_sem_dup = df_base[df_base["Codigo"] != codigo_final]
+                st.session_state.novos_casos = [c for c in st.session_state.novos_casos if c.get("Codigo") != codigo_final]
                 st.session_state.novos_casos.append(nova_linha)
-                df_novo = pd.concat([df_base, pd.DataFrame([nova_linha])], ignore_index=True).fillna("")
-                st.success(f"Caso {novo_codigo} adicionado! Agora ele ja aparece no Relatorio. 💚")
+                df_novo = pd.concat([df_base_sem_dup, pd.DataFrame([nova_linha])], ignore_index=True).fillna("")
+                st.success(f"Caso {codigo_final} adicionado/atualizado! 💚")
                 buffer = io.BytesIO()
                 with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
                     df_novo.to_excel(writer, index=False, startrow=3, sheet_name="2_Base_Casos_Criancas")
@@ -228,7 +252,6 @@ with aba3:
         st.bar_chart(df_cont.set_index("Codigo"))
         st.subheader("4. 📋 Tabela resumo")
         st.dataframe(df_com_dados[["Codigo", "Total Registros", "Total Visitas", "Total Contatos", "Total Articulacoes", "Total Consultas Saude", "Total Atendimentos", "Primeiro Contato", "Ultimo Contato"]])
-
         st.subheader("5. 📄 Baixar Relatorio em PDF - So quem tem Word")
         def gerar_pdf():
             buf = io.BytesIO()
@@ -288,13 +311,11 @@ with aba3:
 
     st.divider()
     st.subheader("6. 👨‍👩‍👧‍👦 Baixar Relatorio em PDF - TODAS as Criancas")
-    st.markdown('<div class="card-alegre">🌈 <b>Relatório completo!</b> Uma página para cada criança, com todas as informações do Excel.</div>', unsafe_allow_html=True)
     st.write(f"Total de crianças que vão para o PDF: **{len(df_todas)}**")
 
     def gerar_pdf_todas():
         buf = io.BytesIO()
         with PdfPages(buf) as pdf:
-            # CAPA - sem emoji no PDF, emoji vira quadradinho
             fig = plt.figure(figsize=(8.5, 11))
             fig.patch.set_facecolor("#FFF8E7")
             ax = fig.add_axes([0, 0, 1, 1])
@@ -313,7 +334,6 @@ with aba3:
             ax.text(5, 4.3, "Feito com amor, verde e laranja!", ha="center", va="center", fontsize=12, color="#FF8C00", style="italic", weight="bold")
             pdf.savefig(fig); plt.close(fig)
 
-            # INDICE - em varias paginas de 25, para nao cortar
             for start in range(0, len(df_todas), 25):
                 chunk = df_todas.iloc[start:start+25]
                 fig_idx, ax_idx = plt.subplots(figsize=(8.5, 11))
@@ -330,9 +350,8 @@ with aba3:
                     tabela_idx[0, j].set_facecolor("#FF8C00"); tabela_idx[0, j].set_text_props(color="white", weight="bold")
                 pdf.savefig(fig_idx); plt.close(fig_idx)
 
-            # UMA PAGINA POR CRIANCA - com continuacao se nao couber
+            # CORRECAO CABECALHO: agora cada pagina tem cabeçalho, inclusive a primeira da criança
             for idx, (_, linha) in enumerate(df_todas.iterrows(), start=1):
-                # Monta lista de linhas (titulo, valor) ja quebradas por palavra
                 linhas = []
                 for coluna in df_todas.columns:
                     if coluna == "Codigo":
@@ -341,22 +360,24 @@ with aba3:
                     if valor == "" or valor.lower() == "nan":
                         continue
                     titulo = str(coluna) + ": "
-                    # CORRECAO 2: quebra por palavra, nao no meio da palavra
                     partes = textwrap.wrap(titulo + valor, width=85, break_long_words=False, break_on_hyphens=False)
                     linhas.extend(partes)
-                # Paginacao: 26 linhas por pagina
+                # Garante pelo menos 1 pagina mesmo se sem linhas
+                if len(linhas) == 0:
+                    linhas = ["Sem informacoes preenchidas."]
                 for pag_n, pag_start in enumerate(range(0, len(linhas), 26)):
                     pag_linhas = linhas[pag_start:pag_start+26]
                     fig_c = plt.figure(figsize=(8.5, 11))
                     fig_c.patch.set_facecolor("#FFF8E7")
                     ax_c = fig_c.add_axes([0, 0, 1, 1])
                     ax_c.set_xlim(0, 10); ax_c.set_ylim(0, 11); ax_c.axis("off")
-                    ax_c.add_patch(plt.Rectangle((0, 10.0), 10, 1.0, facecolor="#2E7D32", edgecolor="none"))
+                    # Faixa sempre desenhada, com zorder alto para nao sumir
+                    ax_c.add_patch(plt.Rectangle((0, 10.0), 10, 1.0, facecolor="#2E7D32", edgecolor="none", zorder=3))
                     titulo_pag = f"Crianca {idx} de {len(df_todas)}"
                     if pag_n > 0:
                         titulo_pag += f" (continuacao {pag_n+1})"
-                    ax_c.text(5, 10.6, titulo_pag, ha="center", va="center", fontsize=12, weight="bold", color="white")
-                    ax_c.text(5, 10.2, "Codigo: " + str(linha["Codigo"]), ha="center", va="center", fontsize=14, weight="bold", color="white")
+                    ax_c.text(5, 10.6, titulo_pag, ha="center", va="center", fontsize=12, weight="bold", color="white", zorder=4)
+                    ax_c.text(5, 10.2, "Codigo: " + str(linha["Codigo"]), ha="center", va="center", fontsize=14, weight="bold", color="white", zorder=4)
                     y = 9.5
                     for texto_linha in pag_linhas:
                         ax_c.text(0.6, y, texto_linha, ha="left", va="top", fontsize=10, color="#222222")
@@ -368,7 +389,6 @@ with aba3:
 
     pdf_todas_bytes = gerar_pdf_todas()
     st.download_button("👨‍👩‍👧‍👦 Baixar PDF - TODAS as Criancas 💚🧡", data=pdf_todas_bytes, file_name="relatorio_TODAS_criancas_SFA.pdf", mime="application/pdf")
-    st.caption("Esse PDF pode ficar grande se tiver muitas crianças, é normal demorar uns segundinhos para gerar.")
 
 if st.button("Sair"):
     st.session_state.logado = False
